@@ -1,0 +1,13 @@
+{% if user.role == "ADMIN" and companies %}
+  <form method="post" action="{% url 'switch_company' %}">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.path }}">
+    <select name="company_id" class="company-select" onchange="this.form.submit()">
+      {% for c in companies %}
+        <option value="{{ c.id }}" {% if active_company and c.id == active_company.id %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+  </form>
+{% endif %}
+<span class="navbar-user">{{ user.full_name }} ({% if user.role == "ADMIN" %}Administrateur{% else %}Vendeur{% endif %})</span>
+<a href="{% url 'logout' %}" class="navbar-logout">↪ Déconnexion</a>

@@ -1,0 +1,87 @@
+{% extends "core/base.html" %}
+{% block title %}Facture #{{ sale.invoice_number }} - Facturier{% endblock %}
+{% block content %}
+
+<div class="invoice-actions no-print">
+  <a href="{% url 'caisse' %}" class="text-muted" style="font-size:13px;">&larr; Retour à la Caisse</a>
+  <div class="flex gap-2">
+    <button type="button" onclick="window.print(); return false;" class="btn btn-outline">🖨 Imprimer (A5)</button>
+    <a href="{% url 'invoice_pdf' sale.id %}" class="btn btn-primary">⇩ Télécharger le PDF</a>
+  </div>
+</div>
+
+<div class="invoice-box">
+  <div class="invoice-header">
+    <p class="invoice-cursive">Merci</p>
+    <div class="invoice-logo">
+      {% if company.logo %}<img src="{{ company.logo.url }}" alt="Logo" onerror="this.replaceWith(Object.assign(document.createElement('span'), {style:'font-size:7px;color:#b91c1c;text-align:center;', textContent:'Logo introuvable'}));">{% else %}<span style="font-size:7px; font-style:italic; text-align:center;">Votre logo ici</span>{% endif %}
+    </div>
+  </div>
+
+  <div class="invoice-company">
+    <h1>{{ company.name|default:"Nom de votre entreprise" }}</h1>
+    <p>{{ company.address|default:"Adresse | Ville | Côte d'Ivoire" }}</p>
+    <p>{{ company.website|default:"" }}{% if company.website and company.email %} | {% endif %}{{ company.email|default:"" }}</p>
+    <p>Tél : {{ company.phone|default:"00 00 00 00 00" }}</p>
+  </div>
+
+  <div class="invoice-meta">
+    <span><strong>N° Facture :</strong> {{ sale.invoice_number }}</span>
+    <span><strong>Date :</strong> {{ sale.created_at|date:"d/m/Y" }} à {{ sale.created_at|date:"H:i" }}</span>
+  </div>
+
+  <p style="font-size:10px; font-weight:700; margin:0 0 4px;">CLIENT</p>
+  <div class="invoice-box-block">
+    <div><strong>Nom :</strong> {{ sale.client_name|default:"Client comptoir" }}</div>
+    <div><strong>Téléphone :</strong> {{ sale.client_phone|default:"-" }}</div>
+  </div>
+
+  <table class="invoice-table">
+    <thead><tr><th>Qté</th><th>Désignation</th><th>P.U.</th><th>Montant</th></tr></thead>
+    <tbody>
+      {% for entry in items_display %}
+      {% with item=entry.item %}
+      <tr>
+        <td style="text-align:center;">{{ item.quantity }}</td>
+        <td style="text-align:center;">
+          {{ item.product.name }}{% if item.is_gift %} <strong>(OFFERT)</strong>{% endif %}
+          {% if item.discount_amount > 0 %}<br><span style="color:var(--red-600); font-size:9px;">Remise : -{{ item.discount_amount|floatformat:0 }} F CFA</span>{% endif %}
+        </td>
+        <td style="text-align:center;">{% if item.is_gift %}0{% else %}{{ item.price|floatformat:0 }}{% endif %}</td>
+        <td style="text-align:center;">{{ entry.net_amount|floatformat:0 }} F CFA</td>
+      </tr>
+      {% endwith %}
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="invoice-totals">
+    <div class="row"><span>Sous-total</span><span>{{ sale.sub_total|floatformat:0 }} F CFA</span></div>
+    {% if sale.discount_amount > 0 %}
+    <div class="row" style="color:var(--red-600);">
+      <span>Réduction{% if sale.discount_type == "PERCENTAGE" %} ({{ sale.discount_value|floatformat:0 }}%){% endif %}</span>
+      <span>- {{ sale.discount_amount|floatformat:0 }} F CFA</span>
+    </div>
+    {% endif %}
+    <div class="row"><span>TVA ({{ company.tva_rate|floatformat:0 }}%)</span><span>{{ sale.tva_amount|floatformat:0 }} F CFA</span></div>
+    <div class="row total"><span>Total</span><span>{{ sale.total|floatformat:0 }} F CFA</span></div>
+  </div>
+
+  <div style="font-size:10px; margin-bottom:12px;">
+    <strong>Règlement :</strong>
+    {% for p in sale.payments.all %}{{ p.get_method_display }} ({{ p.amount|floatformat:0 }} F CFA){% if not forloop.last %} + {% endif %}{% endfor %}
+  </div>
+
+  <div class="invoice-signature">
+    <span style="font-weight:700; flex-shrink:0;">Signature / Cachet :</span>
+    {% if company.stamp %}<img src="{{ company.stamp.url }}" alt="Cachet" onerror="this.replaceWith(Object.assign(document.createElement('span'), {style:'font-size:9px;color:#b91c1c;', textContent:'Cachet introuvable'}));">{% endif %}
+  </div>
+
+  <div style="font-size:10px; margin-bottom:16px; display:flex; gap:8px;">
+    <strong style="flex-shrink:0;">Notes :</strong>
+    <span style="flex:1; border-bottom:1px solid var(--gray-400);">{{ sale.notes|default:"" }}</span>
+  </div>
+
+  <p class="invoice-footer">Merci pour votre confiance !</p>
+</div>
+{% endblock %}

@@ -1,0 +1,61 @@
+{% extends "core/base.html" %}
+{% block title %}Produits - Facturier{% endblock %}
+{% block content %}
+<div class="flex-between mb-4">
+  <h1 style="font-size:18px; margin:0;">Gestion de la base produits</h1>
+  <div class="flex gap-2">
+    <a href="{% url 'product_import' %}" class="btn btn-outline">⇪ Importer depuis Excel</a>
+  </div>
+</div>
+
+{% if not company %}
+  <div class="alert alert-warning">Créez d'abord une entreprise (page « Entreprises ») pour gérer ses produits.</div>
+{% else %}
+  <form method="get" class="mb-4" style="max-width:320px;">
+    <input type="text" name="q" value="{{ query }}" placeholder="Rechercher un produit...">
+  </form>
+
+  <div class="card mb-4">
+    <h2 style="font-size:15px; margin-top:0;">Ajouter un produit</h2>
+    <form method="post">
+      {% csrf_token %}
+      <div class="field"><label>Désignation</label>{{ form.name }}</div>
+      <div class="field"><label>Description</label>{{ form.description }}</div>
+      <div class="field-row">
+        <div class="field"><label>Prix (F CFA)</label>{{ form.price }}</div>
+        <div class="field"><label>Stock</label>{{ form.stock }}</div>
+        <div class="field"><label>Seuil critique</label>{{ form.critical_threshold }}</div>
+      </div>
+      {% if form.non_field_errors %}<ul class="errorlist">{{ form.non_field_errors }}</ul>{% endif %}
+      <button type="submit" name="create_product" value="1" class="btn btn-primary">Ajouter le produit</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Désignation</th><th>Prix</th><th>Stock</th><th>Seuil critique</th><th class="text-right">Actions</th></tr></thead>
+      <tbody>
+        {% for p in products %}
+        <tr>
+          <td>{{ p.name }}</td>
+          <td>{{ p.price|floatformat:0 }} F CFA</td>
+          <td>{{ p.stock }}</td>
+          <td>{{ p.critical_threshold }}</td>
+          <td class="text-right">
+            <a href="{% url 'product_edit' p.id %}" class="btn btn-outline btn-sm">Modifier</a>
+            <form method="post" action="{% url 'product_delete' p.id %}" style="display:inline;" onsubmit="return confirm('Supprimer ce produit ?');">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
+            </form>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="text-muted text-right" style="text-align:center;">Aucun produit.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

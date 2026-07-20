@@ -1,0 +1,26 @@
+{% extends "core/base.html" %}
+{% block title %}Prolongement de la fermeture - Facturier{% endblock %}
+{% block content %}
+<div style="min-height:70vh; display:flex; align-items:center; justify-content:center;">
+  <div class="card container-sm" style="width:100%; max-width:420px;">
+    <h1 style="font-size:17px; margin-top:0;">Prolongement de la fermeture</h1>
+    <div class="field">
+      <label>Date/Heure Ouverture</label>
+      <input type="text" value="{{ session.opened_at|date:'d/m/Y H:i' }}" disabled>
+    </div>
+    <form method="post">
+      {% csrf_token %}
+      <div class="field">
+        <label>Date/Heure Fermeture *</label>
+        {{ form.planned_closed_at }}
+        {% if form.planned_closed_at.errors %}<ul class="errorlist">{{ form.planned_closed_at.errors }}</ul>{% endif %}
+      </div>
+      {% if form.non_field_errors %}<ul class="errorlist">{{ form.non_field_errors }}</ul>{% endif %}
+      <div class="flex gap-2">
+        <a href="{% url 'caisse' %}" class="btn btn-outline" style="flex:1; justify-content:center;">Annuler</a>
+        <button type="submit" class="btn btn-primary" style="flex:1; justify-content:center;">Valider</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

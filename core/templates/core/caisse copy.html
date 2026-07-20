@@ -1,0 +1,176 @@
+{% extends "core/base.html" %}
+{% block title %}Caisse - Facturier{% endblock %}
+{% block content %}
+
+{% if not company %}
+  <div class="alert alert-warning">
+    {% if is_admin %}Créez d'abord une entreprise (page « Entreprises ») pour utiliser la Caisse.
+    {% else %}Aucune entreprise associée à votre compte. Contactez votre administrateur.{% endif %}
+  </div>
+{% else %}
+
+{% if cash_session %}
+<div id="cash-session-data" data-planned-closed-at="{{ cash_session.planned_closed_at|date:'c' }}"></div>
+<form id="auto-close-form" method="post" action="{% url 'cash_session_close' %}" style="display:none;">
+  {% csrf_token %}
+</form>
+<div class="card mb-4" style="background:var(--brand-50); border-color:var(--brand-100);">
+  <div class="flex-between">
+    <span>Caisse ouverte depuis <strong>{{ cash_session.opened_at|date:"d/m/Y H:i" }}</strong> —
+      Fermeture prévue à <strong>{{ cash_session.planned_closed_at|date:"d/m/Y H:i" }}</strong></span>
+    <div class="flex gap-2">
+      <a href="{% url 'cash_session_extend' %}" class="btn btn-outline btn-sm">⏱ Prolonger</a>
+      <form method="post" action="{% url 'cash_session_close' %}" style="display:inline;">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger btn-sm">Fermer maintenant</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="card mb-4">
+  <div class="flex-between">
+    <div class="flex gap-2" style="align-items:center;">
+      {% if company.logo %}<img src="{{ company.logo.url }}" alt="Logo" style="height:44px; width:44px; object-fit:contain; border-radius:6px;">{% endif %}
+      <div>
+        <h1 style="font-size:16px; margin:0;">{{ company.name }}</h1>
+        <p class="text-muted" style="margin:0; font-size:12px;">{{ company.address }}</p>
+      </div>
+    </div>
+    <div class="text-right" style="font-size:13px;">
+      <p style="color:var(--brand-700); font-weight:600; margin:0 0 2px;">Vendu aujourd'hui : {{ revenue_today|floatformat:0 }} F CFA ({{ sales_count_today }} vente(s))</p>
+      <p class="text-muted" style="margin:0;">TVA applicable : {{ company.tva_rate|floatformat:0 }}%</p>
+    </div>
+  </div>
+</div>
+
+<div class="caisse-grid">
+  <div>
+    <div class="search-box">
+      <span class="icon">🔎</span>
+      <input type="text" id="product-search-input" placeholder="Rechercher un produit par désignation...">
+    </div>
+
+    <div class="card">
+      <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th></th><th>Désignation</th><th>Stock</th><th>Prix unitaire</th><th>Ajouter</th></tr>
+        </thead>
+        <tbody>
+          {% for p in products %}
+          <tr data-product-row data-product-name="{{ p.name }}">
+            <td></td>
+            <td>{{ p.name }}</td>
+            <td style="{% if p.stock <= p.critical_threshold %}color:var(--red-600); font-weight:600;{% endif %}">{{ p.stock }}</td>
+            <td>{{ p.price|floatformat:0 }} F CFA</td>
+            <td>
+              {% if p.stock > 0 %}
+              <form method="post" class="flex gap-2" style="align-items:center;">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="add_to_cart">
+                <input type="hidden" name="product_id" value="{{ p.id }}">
+                <input type="number" name="quantity" value="1" min="1" max="{{ p.stock }}" style="width:64px;">
+                <label style="display:flex; align-items:center; gap:4px; font-weight:400; margin:0;">
+                  <input type="checkbox" name="is_gift" style="width:auto;"> Offert
+                </label>
+                <button type="submit" class="btn btn-outline btn-sm">Ajouter</button>
+              </form>
+              {% else %}
+              <span class="badge badge-gray">Rupture</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2 style="font-size:15px; margin-top:0;">🛒 Récapitulatif</h2>
+
+      {% if not cart_lines %}
+        <p class="text-muted">Aucun produit sélectionné.</p>
+      {% else %}
+        {% for line in cart_lines %}
+        <div class="flex-between" style="font-size:13px; margin-bottom:6px;">
+          <span>{{ line.product.name }} × {{ line.quantity }}{% if line.is_gift %} <strong>(Offert)</strong>{% endif %}</span>
+          <div class="flex gap-2" style="align-items:center;">
+            <span>{{ line.line_total|floatformat:0 }} F CFA</span>
+            <form method="post">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="remove_from_cart">
+              <input type="hidden" name="product_id" value="{{ line.product.id }}">
+              <button type="submit" class="btn btn-danger btn-sm" style="padding:2px 8px;">✕</button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      {% endif %}
+
+      <form method="post" style="margin-top:14px; border-top:1px solid var(--gray-100); padding-top:14px;">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="validate_sale">
+
+        <div class="field"><label>Nom du client (optionnel)</label><input type="text" name="client_name"></div>
+        <div class="field"><label>Téléphone du client (optionnel)</label><input type="text" name="client_phone"></div>
+        <div class="field"><label>Notes (optionnel)</label><textarea name="notes" rows="2"></textarea></div>
+
+        <div class="field">
+          <label>Réduction</label>
+          <div class="flex gap-2">
+            <select name="discount_type" id="discount-type-select" style="width:auto;">
+              <option value="NONE" {% if discount_type == "NONE" %}selected{% endif %}>Aucune</option>
+              <option value="PERCENTAGE" {% if discount_type == "PERCENTAGE" %}selected{% endif %}>Pourcentage (%)</option>
+              <option value="AMOUNT" {% if discount_type == "AMOUNT" %}selected{% endif %}>Montant fixe (F CFA)</option>
+            </select>
+            <input type="number" name="discount_value" id="discount-value-field" value="{{ discount_value|default:0 }}"
+              style="{% if discount_type == 'NONE' %}display:none;{% endif %}">
+          </div>
+        </div>
+
+        <div style="font-size:13px; margin:10px 0;">
+          <div class="flex-between"><span>Sous-total</span><span>{{ sub_total|floatformat:0 }} F CFA</span></div>
+          {% if discount_amount > 0 %}
+          <div class="flex-between" style="color:var(--red-600);"><span>Réduction</span><span>- {{ discount_amount|floatformat:0 }} F CFA</span></div>
+          {% endif %}
+          <div class="flex-between"><span>TVA ({{ company.tva_rate|floatformat:0 }}%)</span><span>{{ tva_amount|floatformat:0 }} F CFA</span></div>
+          <div class="flex-between" style="font-weight:700; font-size:15px; border-top:1px solid var(--gray-100); padding-top:6px; margin-top:6px;">
+            <span>Total Net</span><span>{{ total|floatformat:0 }} F CFA</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Mode(s) de paiement</label>
+          {% for value, display in payment_methods %}
+          <div class="flex gap-2 mt-2" style="align-items:center;">
+            <label style="display:flex; align-items:center; gap:6px; font-weight:400; margin:0; flex:1;">
+              <input type="checkbox" name="payment_method" value="{{ value }}" style="width:auto;" onclick="document.getElementById('amount-{{ value }}').style.display = this.checked ? 'block' : 'none';">
+              {{ display }}
+            </label>
+            <input type="number" name="payment_amount" id="amount-{{ value }}" placeholder="Montant" style="width:120px; display:none;">
+          </div>
+          {% endfor %}
+        </div>
+
+        <button type="submit" class="btn btn-primary mt-4" style="width:100%; justify-content:center;" {% if not cart_lines %}disabled{% endif %}>
+          Valider la Vente
+        </button>
+      </form>
+
+      {% if cart_lines %}
+      <form method="post" class="mt-2">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="clear_cart">
+        <button type="submit" class="btn btn-outline btn-sm" style="width:100%; justify-content:center;">Vider le panier</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

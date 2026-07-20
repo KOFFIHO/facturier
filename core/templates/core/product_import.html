@@ -1,0 +1,38 @@
+{% extends "core/base.html" %}
+{% block title %}Importer des produits - Facturier{% endblock %}
+{% block content %}
+<a href="{% url 'products_list' %}" class="text-muted" style="font-size:13px;">&larr; Retour aux produits</a>
+<h1 style="font-size:18px; margin-top:8px; background-color: #2563eb; color: white; border: none; font-weight: 500;">Importer des produits depuis Excel</h1>
+
+<div class="card" style="max-width:560px;">
+  <p class="text-muted">
+    Le fichier doit être au format <strong>.xlsx</strong>, avec une ligne d'en-tête suivie
+    des produits (une ligne par produit) : <em>Désignation, Description, Prix (F CFA), Stock, Seuil critique</em>.
+  </p>
+  <p>
+    <a href="{% url 'product_import_template' %}" class="btn btn-outline btn-sm">⇩ Télécharger le modèle Excel</a>
+  </p>
+
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <div class="field">
+      <label>Fichier Excel (.xlsx)</label>
+      {{ form.file }}
+      {% if form.file.errors %}<ul class="errorlist">{{ form.file.errors }}</ul>{% endif %}
+    </div>
+    <button type="submit" class="btn btn-primary">Importer</button>
+  </form>
+
+  {% if result %}
+    <div class="mt-4">
+      <p><strong>{{ result.created }}</strong> produit(s) importé(s) avec succès.</p>
+      {% if result.errors %}
+        <p class="text-muted">Lignes non importées :</p>
+        <ul class="errorlist">
+          {% for err in result.errors %}<li>{{ err }}</li>{% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

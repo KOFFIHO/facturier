@@ -1,0 +1,49 @@
+{% extends "core/base.html" %}
+{% block title %}Vendeurs - Facturier{% endblock %}
+{% block content %}
+<div class="flex-between mb-4">
+  <h1 style="font-size:18px; margin:0;">Gestion des vendeurs</h1>
+</div>
+
+<div class="card mb-4">
+  <h2 style="font-size:15px; margin-top:0;">Nouveau compte</h2>
+  {% if companies|length == 0 %}
+    <div class="alert alert-warning">Créez d'abord une entreprise avant d'ajouter un vendeur.</div>
+  {% endif %}
+  <form method="post">
+    {% csrf_token %}
+    <div class="field-row">
+      <div class="field"><label>Nom complet</label>{{ form.full_name }}</div>
+      <div class="field"><label>Téléphone (identifiant)</label>{{ form.phone_number }}</div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Mot de passe</label>{{ form.password }}</div>
+      <div class="field"><label>Confirmer</label>{{ form.confirm_password }}</div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Rôle</label>{{ form.role }}</div>
+      <div class="field"><label>Entreprise</label>{{ form.company }}</div>
+    </div>
+    {% if form.non_field_errors %}<ul class="errorlist">{{ form.non_field_errors }}</ul>{% endif %}
+    <button type="submit" class="btn btn-primary" {% if companies|length == 0 %}disabled{% endif %}>Créer le compte</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Nom complet</th><th>Téléphone</th><th>Rôle</th><th>Entreprise</th></tr></thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td>{{ u.full_name }}</td>
+        <td>{{ u.phone_number }}</td>
+        <td>{% if u.role == "ADMIN" %}Administrateur{% else %}Vendeur{% endif %}</td>
+        <td>{{ u.company.name|default:"—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

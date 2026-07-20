@@ -1,0 +1,23 @@
+{% extends "core/base.html" %}
+{% block title %}Ouverture de la Caisse - Facturier{% endblock %}
+{% block content %}
+<div style="min-height:70vh; display:flex; align-items:center; justify-content:center;">
+  <div class="card container-sm" style="width:100%; max-width:420px;">
+    <h1 style="font-size:17px; margin-top:0;">⏰ Ouverture de la Caisse</h1>
+    <p class="text-muted">
+      Déclarez l'heure de fermeture prévue de votre caisse. Vous serez déconnecté(e)
+      automatiquement à cette heure, sauf prolongement.
+    </p>
+    <form method="post">
+      {% csrf_token %}
+      <div class="field">
+        <label>Date/Heure Fermeture *</label>
+        {{ form.planned_closed_at }}
+        {% if form.planned_closed_at.errors %}<ul class="errorlist">{{ form.planned_closed_at.errors }}</ul>{% endif %}
+      </div>
+      {% if form.non_field_errors %}<ul class="errorlist">{{ form.non_field_errors }}</ul>{% endif %}
+      <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center;">Ouvrir la caisse</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "core/base.html" %}
+{% block title %}Dashboard - Facturier{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:16px;">Tableau de bord</h1>
+
+{% if not company %}
+  <div class="alert alert-warning">Créez d'abord une entreprise (page « Entreprises ») pour voir son tableau de bord.</div>
+{% else %}
+  <div class="flex" style="gap:16px; flex-wrap:wrap; margin-bottom:16px;">
+    <div class="card" style="flex:1; min-width:220px;">
+      <p class="text-muted" style="margin:0 0 4px;">Chiffre d'affaires du jour</p>
+      <p style="font-size:22px; font-weight:700; margin:0;">{{ revenue_today|floatformat:0 }} F CFA</p>
+    </div>
+    <div class="card" style="flex:1; min-width:220px;">
+      <p class="text-muted" style="margin:0 0 4px;">Nombre de ventes (jour)</p>
+      <p style="font-size:22px; font-weight:700; margin:0;">{{ sales_count_today }}</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="font-size:16px; margin-top:0;">⚠️ Produits en rupture ou sous le seuil critique</h2>
+    {% if not low_stock_products %}
+      <p class="text-muted">Aucune alerte de stock actuellement.</p>
+    {% else %}
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Désignation</th><th>Stock actuel</th><th>Seuil critique</th><th>Statut</th></tr></thead>
+        <tbody>
+          {% for p in low_stock_products %}
+          <tr>
+            <td>{{ p.name }}</td>
+            <td>{{ p.stock }}</td>
+            <td>{{ p.critical_threshold }}</td>
+            <td><span class="badge badge-red">⚠️ RAVITAILLEMENT REQUIS</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}

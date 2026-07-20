@@ -1,0 +1,34 @@
+{% extends "core/base.html" %}
+{% block title %}Entreprises - Facturier{% endblock %}
+{% block content %}
+<div style="display:grid; grid-template-columns:1fr 2fr; gap:24px;">
+  <div>
+    <h1 style="font-size:18px;">Entreprises</h1>
+    {% for c in companies %}
+      <a href="{% url 'company_edit' c.id %}" class="card" style="display:block; margin-bottom:8px; text-decoration:none;">
+        🏢 {{ c.name }}
+      </a>
+    {% empty %}
+      <p class="text-muted">Aucune entreprise pour le moment.</p>
+    {% endfor %}
+  </div>
+
+  <div>
+    <div class="card">
+      <h2 style="font-size:16px; margin-top:0;">Nouvelle entreprise</h2>
+      <form method="post">
+        {% csrf_token %}
+        <div class="field"><label>Nom de l'entreprise</label>{{ form.name }}</div>
+        <div class="field"><label>Adresse</label>{{ form.address }}</div>
+        <div class="field-row">
+          <div class="field"><label>Téléphone</label>{{ form.phone }}</div>
+          <div class="field"><label>Email</label>{{ form.email }}</div>
+        </div>
+        <div class="field"><label>Site web</label>{{ form.website }}</div>
+        <div class="field"><label>Taux de TVA (%)</label>{{ form.tva_rate }}</div>
+        <button type="submit" name="create_company" value="1" class="btn btn-primary">Créer l'entreprise</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

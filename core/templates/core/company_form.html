@@ -1,0 +1,47 @@
+{% extends "core/base.html" %}
+{% block title %}{{ company.name }} - Facturier{% endblock %}
+{% block content %}
+<a href="{% url 'companies_list' %}" class="text-muted" style="font-size:13px;">&larr; Toutes les entreprises</a>
+<h1 style="font-size:18px; margin-top:8px;">{{ company.name }}</h1>
+
+<div class="card">
+  <h2 style="font-size:15px; margin-top:0;">Informations</h2>
+  <form method="post">
+    {% csrf_token %}
+    <div class="field"><label>Nom de l'entreprise</label>{{ form.name }}</div>
+    <div class="field"><label>Adresse</label>{{ form.address }}</div>
+    <div class="field-row">
+      <div class="field"><label>Téléphone</label>{{ form.phone }}</div>
+      <div class="field"><label>Email</label>{{ form.email }}</div>
+    </div>
+    <div class="field"><label>Site web</label>{{ form.website }}</div>
+    <div class="field"><label>Taux de TVA (%)</label>{{ form.tva_rate }}</div>
+    <button type="submit" name="save_info" value="1" class="btn btn-primary">Enregistrer</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2 style="font-size:15px; margin-top:0;">Logo</h2>
+  {% if company.logo %}<img src="{{ company.logo.url }}" alt="Logo" style="height:64px; margin-bottom:10px; display:block;">{% endif %}
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ logo_form.logo }}
+    <button type="submit" name="upload_logo" value="1" class="btn btn-outline mt-2">Mettre à jour le logo</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2 style="font-size:15px; margin-top:0;">Cachet / Signature</h2>
+  {% if company.stamp %}<img src="{{ company.stamp.url }}" alt="Cachet" style="height:64px; margin-bottom:10px; display:block;">{% endif %}
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ stamp_form.stamp }}
+    <button type="submit" name="upload_stamp" value="1" class="btn btn-outline mt-2">Mettre à jour le cachet</button>
+  </form>
+</div>
+
+<form method="post" action="{% url 'company_delete' company.id %}" onsubmit="return confirm('Supprimer cette entreprise ?');">
+  {% csrf_token %}
+  <button type="submit" class="btn btn-danger">Supprimer l'entreprise</button>
+</form>
+{% endblock %}
