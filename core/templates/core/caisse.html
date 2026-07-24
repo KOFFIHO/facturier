@@ -87,6 +87,19 @@
         </tbody>
       </table>
       </div>
+      {% if products.paginator.num_pages > 1 %}
+      <div class="flex-between mt-4" style="font-size:13px;">
+        <span class="text-muted">Page {{ products.number }} / {{ products.paginator.num_pages }}</span>
+        <div class="flex gap-2">
+          {% if products.has_previous %}
+          <a href="?page={{ products.previous_page_number }}{% if query %}&q={{ query }}{% endif %}" class="btn btn-outline btn-sm">&larr; Précédent</a>
+          {% endif %}
+          {% if products.has_next %}
+          <a href="?page={{ products.next_page_number }}{% if query %}&q={{ query }}{% endif %}" class="btn btn-outline btn-sm">Suivant &rarr;</a>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
     </div>
   </div>
 

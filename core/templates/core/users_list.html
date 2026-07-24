@@ -13,16 +13,31 @@
   <form method="post">
     {% csrf_token %}
     <div class="field-row">
-      <div class="field"><label>Nom complet</label>{{ form.full_name }}</div>
-      <div class="field"><label>Téléphone (identifiant)</label>{{ form.phone_number }}</div>
+      <div class="field">
+        <label>Nom complet</label>{{ form.full_name }}
+        {% if form.full_name.errors %}<ul class="errorlist">{{ form.full_name.errors }}</ul>{% endif %}
+      </div>
+      <div class="field">
+        <label>Téléphone (identifiant, 10 chiffres)</label>{{ form.phone_number }}
+        {% if form.phone_number.errors %}<ul class="errorlist">{{ form.phone_number.errors }}</ul>{% endif %}
+      </div>
     </div>
     <div class="field-row">
-      <div class="field"><label>Mot de passe</label>{{ form.password }}</div>
-      <div class="field"><label>Confirmer</label>{{ form.confirm_password }}</div>
+      <div class="field">
+        <label>Mot de passe</label>{{ form.password }}
+        {% if form.password.errors %}<ul class="errorlist">{{ form.password.errors }}</ul>{% endif %}
+      </div>
+      <div class="field">
+        <label>Confirmer</label>{{ form.confirm_password }}
+        {% if form.confirm_password.errors %}<ul class="errorlist">{{ form.confirm_password.errors }}</ul>{% endif %}
+      </div>
     </div>
     <div class="field-row">
       <div class="field"><label>Rôle</label>{{ form.role }}</div>
-      <div class="field"><label>Entreprise</label>{{ form.company }}</div>
+      <div class="field">
+        <label>Entreprise</label>{{ form.company }}
+        {% if form.company.errors %}<ul class="errorlist">{{ form.company.errors }}</ul>{% endif %}
+      </div>
     </div>
     {% if form.non_field_errors %}<ul class="errorlist">{{ form.non_field_errors }}</ul>{% endif %}
     <button type="submit" class="btn btn-primary" {% if companies|length == 0 %}disabled{% endif %}>Créer le compte</button>
@@ -32,7 +47,7 @@
 <div class="card">
   <div class="table-wrap">
   <table>
-    <thead><tr><th>Nom complet</th><th>Téléphone</th><th>Rôle</th><th>Entreprise</th></tr></thead>
+    <thead><tr><th>Nom complet</th><th>Téléphone</th><th>Rôle</th><th>Entreprise</th><th>Statut</th><th class="text-right">Actions</th></tr></thead>
     <tbody>
       {% for u in users %}
       <tr>
@@ -40,6 +55,24 @@
         <td>{{ u.phone_number }}</td>
         <td>{% if u.role == "ADMIN" %}Administrateur{% else %}Vendeur{% endif %}</td>
         <td>{{ u.company.name|default:"—" }}</td>
+        <td>
+          {% if u.is_active %}<span class="badge badge-gray">Actif</span>{% else %}<span class="badge badge-red">Désactivé</span>{% endif %}
+        </td>
+        <td class="text-right">
+          {% if u.id != request.user.id %}
+          <form method="post" action="{% url 'user_deactivate' u.id %}" style="display:inline;">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline btn-sm">{% if u.is_active %}Désactiver{% else %}Réactiver{% endif %}</button>
+          </form>
+          <form method="post" action="{% url 'user_delete' u.id %}" style="display:inline;"
+                onsubmit="return confirm('Supprimer définitivement « {{ u.full_name }} » ? Cette action est irréversible.');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
+          </form>
+          {% else %}
+          <span class="text-muted" style="font-size:12px;">Vous-même</span>
+          {% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>

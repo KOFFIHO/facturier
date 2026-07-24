@@ -1,12 +1,34 @@
 # Formulaires Django (validation + rendu des champs HTML).
 
 from django import forms
+from django.core.validators import RegexValidator
 
 from .models import CashSession, Company, DiscountType, PaymentMethod, Product, User
 
+_phone_validator = RegexValidator(
+    regex=r"^\d{10}$",
+    message="Le numéro de téléphone doit contenir exactement 10 chiffres.",
+)
+
+
+def phone_number_field(label="Numéro de téléphone"):
+    """Champ téléphone standardisé : uniquement des chiffres, exactement 10,
+    clavier numérique sur mobile (inputmode="numeric")."""
+    return forms.CharField(
+        label=label,
+        validators=[_phone_validator],
+        widget=forms.TextInput(attrs={
+            "inputmode": "numeric",
+            "pattern": "[0-9]{10}",
+            "maxlength": "10",
+            "placeholder": "0700000000",
+        }),
+    )
+
 
 class LoginForm(forms.Form):
-    phone_number = forms.CharField(label="Numéro de téléphone")
+    phone_number = phone_number_field()
+    #phone_number = forms.CharField(label="Numéro de téléphone")
     password = forms.CharField(label="Mot de passe", widget=forms.PasswordInput)
 
 
@@ -14,7 +36,8 @@ class ResetPasswordForm(forms.Form):
     """Réinitialisation en libre-service pour un VENDEUR : identité vérifiée
     uniquement par téléphone + entreprise (pas d'email/SMS)."""
 
-    phone_number = forms.CharField(label="Numéro de téléphone")
+    #phone_number = forms.CharField(label="Numéro de téléphone")
+    phone_number = phone_number_field()
     company = forms.ModelChoiceField(label="Entreprise", queryset=Company.objects.order_by("name"))
     new_password = forms.CharField(label="Nouveau mot de passe", widget=forms.PasswordInput, min_length=6)
     confirm_new_password = forms.CharField(label="Confirmer le mot de passe", widget=forms.PasswordInput, min_length=6)
@@ -30,13 +53,16 @@ class CompanyForm(forms.ModelForm):
     class Meta:
         model = Company
         fields = ["name", "address", "phone", "email", "website", "tva_rate"]
+        widgets = {
+            "name": forms.TextInput(attrs={"placeholder": "Ex : NK_Imprimerie"}),
+            "address": forms.TextInput(attrs={"placeholder": "Béoumi, Côte d'Ivoire"}),
+            "phone": forms.TextInput(attrs={"placeholder": "0700000000"}),
+            "email": forms.EmailInput(attrs={"placeholder": "contact@monentreprise.ci"}),
+            "website": forms.TextInput(attrs={"placeholder": "www.monentreprise.ci"}),
+        }
         labels = {
-            "name": "Nom de l'entreprise",
-            "address": "Adresse",
-            "phone": "Téléphone",
-            "email": "Email",
-            "website": "Site web",
-            "tva_rate": "Taux de TVA (%)",
+            "name": "Nom de l'entreprise", "address": "Adresse", "phone": "Téléphone",
+            "email": "Email", "website": "Site web", "tva_rate": "Taux de TVA (%)",
         }
 
 
@@ -56,7 +82,8 @@ class CreateUserForm(forms.Form):
     """Création d'un vendeur ou d'un administrateur par l'ADMIN."""
 
     full_name = forms.CharField(label="Nom complet", min_length=2)
-    phone_number = forms.CharField(label="Téléphone (identifiant)", min_length=6)
+    phone_number = phone_number_field(label="Téléphone (identifiant)")
+    #phone_number = forms.CharField(label="Téléphone (identifiant)", min_length=6)
     password = forms.CharField(label="Mot de passe", widget=forms.PasswordInput, min_length=6)
     confirm_password = forms.CharField(label="Confirmer", widget=forms.PasswordInput, min_length=6)
     role = forms.ChoiceField(label="Rôle", choices=User.Role.choices)
@@ -80,12 +107,12 @@ class ProductForm(forms.ModelForm):
     class Meta:
         model = Product
         fields = ["name", "description", "price", "stock", "critical_threshold"]
-        labels = {
-            "name": "Désignation",
-            "description": "Description",
-            "price": "Prix unitaire (F CFA)",
-            "stock": "Stock actuel",
-            "critical_threshold": "Seuil critique",
+        widgets = {
+            "name": forms.TextInput(attrs={"placeholder": "Ex : Disque de frein ventilé"}),
+            "description": forms.Textarea(attrs={"placeholder": "Détails optionnels du produit", "rows": 3}),
+            "price": forms.NumberInput(attrs={"placeholder": "Ex : 15000"}),
+            "stock": forms.NumberInput(attrs={"placeholder": "Ex : 20"}),
+            "critical_threshold": forms.NumberInput(attrs={"placeholder": "Ex : 5"}),
         }
 
     def clean_price(self):

@@ -21,6 +21,9 @@ urlpatterns = [
 
     # Vendeurs
     path("vendeurs/", views.users_list_view, name="users_list"),
+    path("vendeurs/", views.users_list_view, name="users_list"),
+    path("vendeurs/<uuid:user_id>/supprimer/", views.user_delete_view, name="user_delete"),
+    path("vendeurs/<uuid:user_id>/desactiver/", views.user_deactivate_view, name="user_deactivate"),
 
     # Produits
     path("produits/", views.products_list_view, name="products_list"),

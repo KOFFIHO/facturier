@@ -7,7 +7,14 @@ import uuid
 
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
+from django.core.validators import RegexValidator
 from django.db import models
+
+# Validateur réutilisable pour garantir exactement 10 chiffres (Format CI)
+phone_validator = RegexValidator(
+    regex=r'^\d{10}$',
+    message="Le numéro de téléphone doit contenir exactement 10 chiffres."
+)
 
 
 class Company(models.Model):
@@ -16,7 +23,12 @@ class Company(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=200)
     address = models.CharField(max_length=255, null=True, blank=True)
-    phone = models.CharField(max_length=30, null=True, blank=True)
+    phone = models.CharField(
+        max_length=10, 
+        validators=[phone_validator], 
+        null=True, 
+        blank=True
+    )
     email = models.EmailField(null=True, blank=True)
     website = models.CharField(max_length=200, null=True, blank=True)
     tva_rate = models.FloatField(default=18)  # Taux de TVA en Côte d'Ivoire : 18% par défaut
@@ -63,7 +75,11 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     full_name = models.CharField(max_length=150)
-    phone_number = models.CharField(max_length=30, unique=True)
+    phone_number = models.CharField(
+        max_length=10, 
+        unique=True, 
+        validators=[phone_validator]
+    )
     role = models.CharField(max_length=10, choices=Role.choices, default=Role.SELLER)
     company = models.ForeignKey(
         Company, null=True, blank=True, on_delete=models.SET_NULL, related_name="users"
@@ -127,7 +143,12 @@ class Sale(models.Model):
 
     company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name="sales")
     client_name = models.CharField(max_length=200, null=True, blank=True)
-    client_phone = models.CharField(max_length=30, null=True, blank=True)
+    client_phone = models.CharField(
+        max_length=10, 
+        validators=[phone_validator], 
+        null=True, 
+        blank=True
+    )
     notes = models.TextField(null=True, blank=True)
 
     discount_type = models.CharField(max_length=12, choices=DiscountType.choices, default=DiscountType.NONE)
@@ -183,7 +204,6 @@ class CashSession(models.Model):
 
     def __str__(self):
         return f"Session de {self.seller.full_name} ({self.opened_at:%d/%m/%Y %H:%M})"
-
 
 
 class SaleItem(models.Model):

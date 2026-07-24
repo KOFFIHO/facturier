@@ -2,7 +2,12 @@
 # (multi-tenant), vendeurs, produits (+ import Excel), Caisse (panier en
 # session), session de caisse, historique, facture (HTML + PDF).
 
+from django.core.paginator import Paginator
+
 from datetime import datetime, time
+
+from django.db import transaction
+from django.db.models import F, ProtectedError
 
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
@@ -208,6 +213,45 @@ def users_list_view(request):
     return render(request, "core/users_list.html", {"users": users, "companies": companies, "form": form})
 
 
+
+
+@admin_required
+def user_delete_view(request, user_id):
+    """Supprime un compte (vendeur ou administrateur). Un compte ayant déjà
+    des ventes enregistrées ne peut pas être supprimé (intégrité de
+    l'historique) : on lui suggère de désactiver le compte à la place."""
+    target_user = get_object_or_404(User, id=user_id)
+
+    if request.method == "POST":
+        if target_user.id == request.user.id:
+            messages.error(request, "Vous ne pouvez pas supprimer votre propre compte.")
+        else:
+            try:
+                target_user.delete()
+                messages.success(request, "Compte supprimé avec succès.")
+            except ProtectedError:
+                messages.error(
+                    request,
+                    f"Impossible de supprimer « {target_user.full_name} » : des ventes sont déjà "
+                    "enregistrées à son nom. Désactivez plutôt ce compte.",
+                )
+
+    return redirect("users_list")
+
+
+@admin_required
+def user_deactivate_view(request, user_id):
+    """Désactive (ou réactive) un compte sans supprimer son historique de
+    ventes. Alternative à la suppression quand celle-ci est impossible."""
+    target_user = get_object_or_404(User, id=user_id)
+    if request.method == "POST" and target_user.id != request.user.id:
+        target_user.is_active = not target_user.is_active
+        target_user.save(update_fields=["is_active"])
+        messages.success(
+            request,
+            f"Compte {'réactivé' if target_user.is_active else 'désactivé'} avec succès.",
+        )
+    return redirect("users_list")
 # ---------------------------------------------------------------------------
 # Produits (+ import Excel)
 # ---------------------------------------------------------------------------
@@ -392,6 +436,10 @@ def caisse_view(request):
     if query:
         products = products.filter(name__icontains=query)
 
+    paginator = Paginator(products, 15)
+    page_number = request.GET.get("page", 1)
+    products_page = paginator.get_page(page_number)
+
     cart = _get_cart(request)
 
     # --- Traitement des actions du panier (une seule vue gère tout, via le champ "action") ---
@@ -410,13 +458,13 @@ def caisse_view(request):
                     _save_cart(request, cart)
                 else:
                     messages.error(request, f"« {product.name} » est en rupture de stock.")
-            return redirect("caisse")
+            return redirect(_caisse_redirect_url(request))
 
         if action == "remove_from_cart":
             product_id = request.POST.get("product_id")
             cart.pop(product_id, None)
             _save_cart(request, cart)
-            return redirect("caisse")
+            return redirect(_caisse_redirect_url(request))
 
         if action == "update_line_discount":
             product_id = request.POST.get("product_id")
@@ -427,7 +475,7 @@ def caisse_view(request):
                     line_discount = 0
                 cart[product_id]["discount"] = line_discount
                 _save_cart(request, cart)
-            return redirect("caisse")
+            return redirect(_caisse_redirect_url(request))
 
         if action == "clear_cart":
             _save_cart(request, {})
@@ -479,7 +527,7 @@ def caisse_view(request):
     return render(request, "core/caisse.html", {
         "company": company,
         "is_admin": is_admin,
-        "products": products,
+        "products": products_page,
         "query": query,
         "cart_lines": cart_lines,
         "sub_total": sub_total,
