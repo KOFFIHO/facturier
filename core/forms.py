@@ -167,7 +167,7 @@ class AddToCartForm(forms.Form):
 class ValidateSaleForm(forms.Form):
     """Informations complémentaires saisies au moment de valider la vente."""
 
-    client_name = forms.CharField(label="Nom du client", required=False)
+    client_name = forms.CharField(label="Nom du client", required=True )
     client_phone = forms.CharField(label="Téléphone du client", required=False)
     notes = forms.CharField(label="Notes", required=False, widget=forms.Textarea(attrs={"rows": 2}))
     discount_type = forms.ChoiceField(label="Type de réduction", choices=DiscountType.choices, required=False)

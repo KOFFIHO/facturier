@@ -252,6 +252,31 @@ def user_deactivate_view(request, user_id):
             f"Compte {'réactivé' if target_user.is_active else 'désactivé'} avec succès.",
         )
     return redirect("users_list")
+
+def _get_cart(request):
+    return request.session.setdefault("cart", {})
+
+
+def _save_cart(request, cart):
+    request.session["cart"] = cart
+    request.session.modified = True
+
+
+def _caisse_redirect_url(request):
+    """Conserve les paramètres de recherche/pagination lors de la redirection dans la caisse."""
+    q = request.POST.get("q") or request.GET.get("q", "")
+    page = request.POST.get("page") or request.GET.get("page", "")
+    
+    url = redirect("caisse").url
+    params = []
+    if q:
+        params.append(f"q={q}")
+    if page:
+        params.append(f"page={page}")
+    
+    if params:
+        url += "?" + "&".join(params)
+    return url
 # ---------------------------------------------------------------------------
 # Produits (+ import Excel)
 # ---------------------------------------------------------------------------
