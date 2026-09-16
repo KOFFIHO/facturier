@@ -179,7 +179,7 @@
               <input type="checkbox" name="payment_method" value="{{ value }}" class="payment-method-checkbox" style="width:auto;">
               {{ display }}
             </label>
-            <input type="number" name="payment_amount" class="payment-amount-input" data-method="{{ value }}" placeholder="Montant" style="width:120px; display:none;">
+            <input type="number" name="payment_amount_{{ value }}" class="payment-amount-input" data-method="{{ value }}" placeholder="Montant" style="width:120px; display:none;">
           </div>
           {% endfor %}
         </div>

@@ -440,6 +440,7 @@ def cash_session_close_view(request):
         session.save(update_fields=["is_closed", "actual_closed_at"])
     return redirect("logout")
 
+
 @login_required
 def caisse_view(request):
     is_admin = request.user.role == User.Role.ADMIN
@@ -466,7 +467,7 @@ def caisse_view(request):
 
     cart = _get_cart(request)
 
-    # --- Traitement des actions du panier ---
+    # --- Traitement des actions du panier (une seule vue gère tout, via le champ "action") ---
     if request.method == "POST":
         action = request.POST.get("action")
 
@@ -506,10 +507,7 @@ def caisse_view(request):
             return redirect("caisse")
 
         if action == "validate_sale":
-            result = _handle_validate_sale(request, company, cart, cash_session)
-            # Si une erreur est survenue (ne retourne pas de redirect), on continue le rendu
-            if isinstance(result, HttpResponse):
-                return result
+            return _handle_validate_sale(request, company, cart, cash_session)
 
     # --- Construction du récapitulatif du panier pour l'affichage ---
     cart_lines = []
@@ -527,12 +525,8 @@ def caisse_view(request):
             "discount": line_discount, "raw_total": raw_total, "line_total": line_total,
         })
 
-    # Récupération des valeurs saisies en POST si erreur, sinon valeurs par défaut
-    client_name = request.POST.get("client_name", "") if request.method == "POST" else ""
-    client_phone = request.POST.get("client_phone", "") if request.method == "POST" else ""
-    notes = request.POST.get("notes", "") if request.method == "POST" else ""
-
-    discount_type = request.POST.get("discount_type", DiscountType.NONE) if request.method == "POST" else DiscountType.NONE
+    sale_form = ValidateSaleForm(request.POST if request.method == "POST" else None)
+    discount_type = request.POST.get("discount_type", "NONE") if request.method == "POST" else "NONE"
     try:
         discount_value = float(request.POST.get("discount_value") or 0) if request.method == "POST" else 0
     except ValueError:
@@ -548,14 +542,6 @@ def caisse_view(request):
     taxable = sub_total - discount_amount
     tva_amount = taxable * (company.tva_rate / 100)
     total = taxable + tva_amount
-
-    # Restauration des modes de paiement saisis
-    selected_payments = []
-    if request.method == "POST":
-        p_methods = request.POST.getlist("payment_method")
-        p_amounts = request.POST.getlist("payment_amount")
-        for m, a in zip(p_methods, p_amounts):
-            selected_payments.append({"method": m, "amount": a})
 
     start_of_day = timezone.make_aware(datetime.combine(timezone.now().date(), time.min))
     seller_sales_today = Sale.objects.filter(company=company, created_at__gte=start_of_day)
@@ -579,118 +565,7 @@ def caisse_view(request):
         "cash_session": cash_session,
         "revenue_today": revenue_today,
         "sales_count_today": seller_sales_today.count(),
-        "client_name": client_name,
-        "client_phone": client_phone,
-        "notes": notes,
-        "selected_payments": selected_payments,
     })
-
-
-def _handle_validate_sale(request, company, cart, cash_session):
-    if not cart:
-        messages.error(request, "Le panier est vide.")
-        return None  # Ne fait plus de redirect pour réafficher le formulaire sans vider
-
-    if request.user.role == User.Role.SELLER:
-        if not cash_session:
-            messages.error(request, "Aucune session de caisse ouverte.")
-            return redirect("cash_session_open")
-        if timezone.now() >= cash_session.planned_closed_at:
-            messages.error(request, "La session de caisse est arrivée à échéance.")
-            return redirect("cash_session_open")
-
-    payment_methods = request.POST.getlist("payment_method")
-    payment_amounts = request.POST.getlist("payment_amount")
-    payments = []
-    for method, amount_raw in zip(payment_methods, payment_amounts):
-        try:
-            amount = float(amount_raw)
-        except (TypeError, ValueError):
-            continue
-        if amount > 0:
-            payments.append({"method": method, "amount": amount})
-
-    if not payments:
-        messages.error(request, "Sélectionnez au moins un mode de paiement.")
-        return None
-
-    discount_type = request.POST.get("discount_type", DiscountType.NONE)
-    try:
-        discount_value = float(request.POST.get("discount_value") or 0)
-    except ValueError:
-        discount_value = 0
-
-    try:
-        with transaction.atomic():
-            sub_total = 0
-            resolved_items = []
-
-            for product_id, line in cart.items():
-                product = Product.objects.select_for_update().get(id=product_id, company=company)
-                quantity = line["quantity"]
-                is_gift = line["is_gift"]
-                line_discount = max(0, min(line.get("discount", 0), product.price * quantity))
-
-                if quantity > product.stock:
-                    raise ValueError(
-                        f'Stock insuffisant pour "{product.name}" '
-                        f"(demandé: {quantity}, disponible: {product.stock})."
-                    )
-                if not is_gift:
-                    sub_total += max(0, product.price * quantity - line_discount)
-                resolved_items.append((product, quantity, is_gift, line_discount))
-
-            if discount_type == DiscountType.PERCENTAGE:
-                discount_amount = sub_total * (discount_value / 100)
-            elif discount_type == DiscountType.AMOUNT:
-                discount_amount = discount_value
-            else:
-                discount_amount = 0
-            discount_amount = max(0, min(discount_amount, sub_total))
-
-            taxable = sub_total - discount_amount
-            tva_amount = taxable * (company.tva_rate / 100)
-            total = taxable + tva_amount
-
-            payments_sum = sum(p["amount"] for p in payments)
-            if abs(payments_sum - total) > ROUNDING_TOLERANCE:
-                raise ValueError(
-                    f"Le total des paiements ({round(payments_sum)} F CFA) ne correspond pas "
-                    f"au montant total de la facture ({round(total)} F CFA)."
-                )
-
-            sale = Sale.objects.create(
-                company=company,
-                sub_total=sub_total,
-                discount_type=discount_type,
-                discount_value=discount_value,
-                discount_amount=discount_amount,
-                tva_amount=tva_amount,
-                total=total,
-                client_name=request.POST.get("client_name") or None,
-                client_phone=request.POST.get("client_phone") or None,
-                notes=request.POST.get("notes") or None,
-                seller=request.user,
-            )
-
-            for product, quantity, is_gift, line_discount in resolved_items:
-                sale.items.create(
-                    product=product, quantity=quantity, price=product.price,
-                    is_gift=is_gift, discount_amount=line_discount,
-                )
-                product.stock = F("stock") - quantity
-                product.save(update_fields=["stock"])
-
-            for payment in payments:
-                sale.payments.create(method=payment["method"], amount=payment["amount"])
-
-    except ValueError as exc:
-        messages.error(request, str(exc))
-        return None  # On conserve l'état en réaffichant la page directement au lieu de rediriger
-
-    _save_cart(request, {})
-    messages.success(request, "Vente validée avec succès.")
-    return redirect("invoice", sale_id=sale.id)
 
 def _handle_validate_sale(request, company, cart, cash_session):
     if not cart:
