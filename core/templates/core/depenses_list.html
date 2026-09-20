@@ -1,0 +1,64 @@
+{% extends "core/base.html" %}
+{% block title %}Dépenses - Facturier{% endblock %}
+{% block content %}
+<h1 style="font-size:18px; margin-bottom:16px;">Dépenses</h1>
+
+{% if not company %}
+  <div class="alert alert-warning">Créez d'abord une entreprise pour saisir des dépenses.</div>
+{% else %}
+<div class="card mb-4">
+  <h2 style="font-size:15px; margin-top:0;">Nouvelle dépense</h2>
+  <form method="post">
+    {% csrf_token %}
+    <div class="field-row">
+      <div class="field"><label>Date</label>{{ form.date }}</div>
+      <div class="field"><label>Type de dépense</label>{{ form.type_depense }}</div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Libellé</label>{{ form.label }}</div>
+      <div class="field"><label>Montant (F CFA)</label>{{ form.amount }}</div>
+    </div>
+    <div class="field"><label>Commentaire</label>{{ form.comment }}</div>
+    {% if form.non_field_errors %}<ul class="errorlist">{{ form.non_field_errors }}</ul>{% endif %}
+    <button type="submit" name="create_depense" value="1" class="btn btn-primary">Enregistrer</button>
+  </form>
+</div>
+
+<form method="get" class="card mb-4 flex gap-2" style="align-items:flex-end; flex-wrap:wrap;">
+  <div class="field" style="margin:0;"><label>Rechercher</label><input type="text" name="q" value="{{ query }}" placeholder="Type ou libellé..."></div>
+  <div class="field" style="margin:0;"><label>Du</label><input type="date" name="start_date" value="{{ start_date }}"></div>
+  <div class="field" style="margin:0;"><label>Au</label><input type="date" name="end_date" value="{{ end_date }}"></div>
+  <button type="submit" class="btn btn-primary">Filtrer</button>
+  <a href="{% url 'depenses_list' %}" class="btn btn-outline">✕ Réinitialiser</a>
+</form>
+
+<p class="text-muted mb-2">Total : <strong>{{ total|floatformat:0 }} F CFA</strong></p>
+
+<div class="card">
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Date</th><th>Type</th><th>Libellé</th><th>Montant</th><th>Commentaire</th><th class="text-right">Actions</th></tr></thead>
+    <tbody>
+      {% for d in depenses %}
+      <tr>
+        <td>{{ d.date|date:"d/m/Y" }}</td>
+        <td>{{ d.type_depense }}</td>
+        <td>{{ d.label }}</td>
+        <td>{{ d.amount|floatformat:0 }} F CFA</td>
+        <td>{{ d.comment|default:"—" }}</td>
+        <td class="text-right">
+          <form method="post" action="{% url 'depense_delete' d.id %}" style="display:inline;" onsubmit="return confirm('Supprimer cette dépense ?');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
+          </form>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" style="text-align:center;" class="text-muted">Aucune dépense.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

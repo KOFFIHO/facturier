@@ -44,6 +44,7 @@
           <td>{{ p.critical_threshold }}</td>
           <td class="text-right">
             <a href="{% url 'product_edit' p.id %}" class="btn btn-outline btn-sm">Modifier</a>
+            <a href="{% url 'product_restock' p.id %}" class="btn btn-outline btn-sm" title="Approvisionner">📦 Approvisionner</a>
             <form method="post" action="{% url 'product_delete' p.id %}" style="display:inline;" onsubmit="return confirm('Supprimer ce produit ?');">
               {% csrf_token %}
               <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>

@@ -1,6 +1,7 @@
 # Routes de toutes les pages de l'application.
 
 from django.urls import path
+from django.views.generic import RedirectView
 
 from . import views
 
@@ -44,4 +45,19 @@ urlpatterns = [
     # Facture
     path("factures/<int:sale_id>/", views.invoice_view, name="invoice"),
     path("factures/<int:sale_id>/pdf/", views.invoice_pdf_view, name="invoice_pdf"),
+
+    # Caisse SERVICES + catalogue de prestations
+    path("caisse/services/", views.caisse_services_view, name="caisse_services"),
+    path("prestations/", views.services_list_view, name="services_list"),
+    path("prestations/<uuid:service_id>/modifier/", views.service_edit_view, name="service_edit"),
+    path("prestations/<uuid:service_id>/supprimer/", views.service_delete_view, name="service_delete"),
+
+    path("depenses/", views.depenses_list_view, name="depenses_list"),
+    path("depenses/<uuid:depense_id>/supprimer/", views.depense_delete_view, name="depense_delete"),
+
+    path("caisse/", views.caisse_view, name="caisse"),
+    path("caisse/services/", RedirectView.as_view(pattern_name="caisse"), name="caisse_services"),
+
+    path("produits/<uuid:product_id>/approvisionner/", views.product_restock_view, name="product_restock"),
+    path("approvisionnements/", views.approvisionnements_list_view, name="approvisionnements_list"),
 ]

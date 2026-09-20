@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
+from django.db.models import manager
 
 from .models import CashSession, Company, Product, Sale, SaleItem, SalePayment, User
 
@@ -24,7 +25,6 @@ class UserAdmin(DjangoUserAdmin):
 class CompanyAdmin(admin.ModelAdmin):
     list_display = ("name", "tva_rate", "phone", "email")
     search_fields = ("name",)
-
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):

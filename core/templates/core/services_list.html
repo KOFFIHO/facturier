@@ -1,0 +1,58 @@
+{% extends "core/base.html" %}
+{% block title %}Prestations - Facturier{% endblock %}
+{% block content %}
+<div class="flex-between mb-4">
+  <h1 style="font-size:18px; margin:0;">Catalogue des prestations</h1>
+</div>
+
+{% if not company %}
+  <div class="alert alert-warning">Créez d'abord une entreprise (page « Entreprises ») pour gérer ses prestations.</div>
+{% else %}
+  <form method="get" class="mb-4" style="max-width:320px;">
+    <input type="text" name="q" value="{{ query }}" placeholder="Rechercher une prestation...">
+  </form>
+
+  <div class="card mb-4">
+    <h2 style="font-size:15px; margin-top:0;">Ajouter une prestation</h2>
+    <form method="post">
+      {% csrf_token %}
+      <div class="field"><label>Désignation</label>{{ form.name }}</div>
+      <div class="field"><label>Description</label>{{ form.description }}</div>
+      <div class="field-row">
+        <div class="field"><label>Prix indicatif (F CFA)</label>{{ form.default_price }}</div>
+        <div class="field" style="display:flex; align-items:center; gap:8px; margin-top:20px;">
+          {{ form.is_active }} <label style="margin:0;">Prestation active</label>
+        </div>
+      </div>
+      {% if form.non_field_errors %}<ul class="errorlist">{{ form.non_field_errors }}</ul>{% endif %}
+      <button type="submit" class="btn btn-primary">Ajouter la prestation</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Désignation</th><th>Prix indicatif</th><th>Statut</th><th class="text-right">Actions</th></tr></thead>
+      <tbody>
+        {% for s in services %}
+        <tr>
+          <td>{{ s.name }}</td>
+          <td>{{ s.default_price|floatformat:0 }} F CFA</td>
+          <td>{% if s.is_active %}<span class="badge badge-gray">Active</span>{% else %}<span class="badge badge-red">Inactive</span>{% endif %}</td>
+          <td class="text-right">
+            <a href="{% url 'service_edit' s.id %}" class="btn btn-outline btn-sm">Modifier</a>
+            <form method="post" action="{% url 'service_delete' s.id %}" style="display:inline;" onsubmit="return confirm('Supprimer cette prestation ?');">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
+            </form>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4" class="text-muted" style="text-align:center;">Aucune prestation.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

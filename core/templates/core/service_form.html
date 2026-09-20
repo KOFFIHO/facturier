@@ -1,0 +1,19 @@
+{% extends "core/base.html" %}
+{% block title %}Modifier {{ service.name }} - Facturier{% endblock %}
+{% block content %}
+<a href="{% url 'services_list' %}" class="text-muted" style="font-size:13px;">&larr; Retour aux prestations</a>
+<div class="card mt-2" style="max-width:520px;">
+  <h1 style="font-size:16px; margin-top:0;">Modifier « {{ service.name }} »</h1>
+  <form method="post">
+    {% csrf_token %}
+    <div class="field"><label>Désignation</label>{{ form.name }}</div>
+    <div class="field"><label>Description</label>{{ form.description }}</div>
+    <div class="field"><label>Prix indicatif (F CFA)</label>{{ form.default_price }}</div>
+    <div class="field flex gap-2" style="align-items:center;">
+      {{ form.is_active }} <label style="margin:0;">Prestation active</label>
+    </div>
+    {% if form.non_field_errors %}<ul class="errorlist">{{ form.non_field_errors }}</ul>{% endif %}
+    <button type="submit" class="btn btn-primary">Enregistrer les modifications</button>
+  </form>
+</div>
+{% endblock %}

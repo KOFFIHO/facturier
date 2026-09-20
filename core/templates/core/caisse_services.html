@@ -1,6 +1,6 @@
 {% extends "core/base.html" %}
 {% load core_extras %}
-{% block title %}Caisse - Facturier{% endblock %}
+{% block title %}Caisse Services - Facturier{% endblock %}
 {% block content %}
 
 {% if not company %}
@@ -35,7 +35,7 @@
     <div class="flex gap-2" style="align-items:center;">
       {% if company.logo %}<img src="{{ company.logo.url }}" alt="Logo" style="height:44px; width:44px; object-fit:contain; border-radius:6px;">{% endif %}
       <div>
-        <h1 style="font-size:16px; margin:0;">{{ company.name }}</h1>
+        <h1 style="font-size:16px; margin:0;">{{ company.name }} — Caisse Services</h1>
         <p class="text-muted" style="margin:0; font-size:12px;">{{ company.address }}</p>
       </div>
     </div>
@@ -44,77 +44,27 @@
       <p class="text-muted" style="margin:0;">TVA applicable : {{ company.tva_rate|floatformat:0 }}%</p>
     </div>
   </div>
+  <div class="mt-2">
+    <a href="{% url 'caisse' %}" class="btn btn-outline btn-sm">📦 Aller à la Caisse Produits</a>
+  </div>
 </div>
 
 <div class="caisse-grid">
   <div>
-    <!-- ===== PRODUITS ===== -->
     <div class="search-box flex gap-2" style="align-items:center;">
       <span class="icon">🔎</span>
-      <input type="text" id="product-search-input" placeholder="Rechercher un produit par désignation..." style="flex:1;">
+      <input type="text" id="product-search-input" placeholder="Rechercher une prestation..." style="flex:1;">
       <button type="button" id="reset-search-btn" class="btn btn-outline btn-sm">✕ Réinitialiser</button>
     </div>
 
     <div class="card">
-      <h2 style="font-size:14px; margin-top:0;">📦 Produits</h2>
-      <div class="table-wrap">
-      <table>
-        <thead><tr><th></th><th>Désignation</th><th>Stock</th><th>Prix unitaire</th><th>Ajouter</th></tr></thead>
-        <tbody>
-          {% for p in products %}
-          <tr data-product-row data-product-name="{{ p.name }}">
-            <td></td>
-            <td>{{ p.name }}</td>
-            <td style="{% if p.stock <= p.critical_threshold %}color:var(--red-600); font-weight:600;{% endif %}">{{ p.stock }}</td>
-            <td>{{ p.price|floatformat:0 }} F CFA</td>
-            <td>
-              {% if p.stock > 0 %}
-              <form method="post" class="flex gap-2" style="align-items:center;">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="add_product">
-                <input type="hidden" name="product_id" value="{{ p.id }}">
-                <input type="number" name="quantity" value="1" min="1" max="{{ p.stock }}" style="width:64px;">
-                <label style="display:flex; align-items:center; gap:4px; font-weight:400; margin:0;">
-                  <input type="checkbox" name="is_gift" style="width:auto;"> Offert
-                </label>
-                <button type="submit" class="btn btn-outline btn-sm">Ajouter</button>
-              </form>
-              {% else %}
-              <span class="badge badge-gray">Rupture</span>
-              {% endif %}
-            </td>
-          </tr>
-          {% empty %}
-          <tr><td colspan="5" class="text-muted" style="text-align:center;">Aucun produit.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      </div>
-
-      {% if products.paginator.num_pages > 1 %}
-      <div class="flex-between mt-4" style="font-size:13px;">
-        <span class="text-muted">Page {{ products.number }} / {{ products.paginator.num_pages }}</span>
-        <div class="flex gap-2">
-          {% if products.has_previous %}
-          <a href="?page={{ products.previous_page_number }}{% if query %}&q={{ query }}{% endif %}" class="btn btn-outline btn-sm">&larr; Précédent</a>
-          {% endif %}
-          {% if products.has_next %}
-          <a href="?page={{ products.next_page_number }}{% if query %}&q={{ query }}{% endif %}" class="btn btn-outline btn-sm">Suivant &rarr;</a>
-          {% endif %}
-        </div>
-      </div>
-      {% endif %}
-    </div>
-
-    <!-- ===== SERVICES ===== -->
-    <div class="card mt-4">
-      <h2 style="font-size:14px; margin-top:0;">🩺 Prestations (catalogue)</h2>
+      <h2 style="font-size:14px; margin-top:0;">Catalogue de prestations</h2>
       <div class="table-wrap">
       <table>
         <thead><tr><th>Désignation</th><th>Prix indicatif</th><th>Ajouter</th></tr></thead>
         <tbody>
           {% for s in services %}
-          <tr>
+          <tr data-product-row data-product-name="{{ s.name }}">
             <td>{{ s.name }}</td>
             <td>{{ s.default_price|floatformat:0 }} F CFA</td>
             <td>
@@ -129,25 +79,11 @@
             </td>
           </tr>
           {% empty %}
-          <tr><td colspan="3" class="text-muted" style="text-align:center;">Aucune prestation dans le catalogue.</td></tr>
+          <tr><td colspan="3" class="text-muted" style="text-align:center;">Aucune prestation dans le catalogue. Ajoutez-en depuis « Prestations », ou utilisez une ligne libre ci-dessous.</td></tr>
           {% endfor %}
         </tbody>
       </table>
       </div>
-
-      {% if services.paginator.num_pages > 1 %}
-      <div class="flex-between mt-4" style="font-size:13px;">
-        <span class="text-muted">Page {{ services.number }} / {{ services.paginator.num_pages }}</span>
-        <div class="flex gap-2">
-          {% if services.has_previous %}
-          <a href="?spage={{ services.previous_page_number }}{% if query %}&q={{ query }}{% endif %}#services" class="btn btn-outline btn-sm">&larr; Précédent</a>
-          {% endif %}
-          {% if services.has_next %}
-          <a href="?spage={{ services.next_page_number }}{% if query %}&q={{ query }}{% endif %}#services" class="btn btn-outline btn-sm">Suivant &rarr;</a>
-          {% endif %}
-        </div>
-      </div>
-      {% endif %}
     </div>
 
     <div class="card mt-4">
@@ -157,7 +93,7 @@
         <input type="hidden" name="action" value="add_free_line">
         <div class="field" style="margin:0; flex:2; min-width:200px;">
           <label>Désignation</label>
-          <input type="text" name="label" placeholder="Ex : Consultation, Injection...">
+          <input type="text" name="label" placeholder="Ex : Lavage moteur">
         </div>
         <div class="field" style="margin:0; width:120px;">
           <label>Prix (F CFA)</label>
@@ -174,19 +110,15 @@
 
   <div>
     <div class="card">
-      <h2 style="font-size:15px; margin-top:0;">🛒 Récapitulatif (facture unique)</h2>
+      <h2 style="font-size:15px; margin-top:0;">🛒 Récapitulatif</h2>
 
       {% if not cart_lines %}
-        <p class="text-muted">Aucun article sélectionné.</p>
+        <p class="text-muted">Aucune prestation sélectionnée.</p>
       {% else %}
         {% for line in cart_lines %}
         <div style="margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid var(--gray-100);">
           <div class="flex-between" style="font-size:13px;">
-            <span>
-              {% if line.kind == "product" %}<span class="badge badge-gray" style="font-size:9px;">Produit</span>
-              {% else %}<span class="badge badge-dark" style="font-size:9px;">Prestation</span>{% endif %}
-              {{ line.label }} × {{ line.quantity }}{% if line.is_gift %} <strong>(Offert)</strong>{% endif %}
-            </span>
+            <span>{{ line.label }} × {{ line.quantity }}</span>
             <div class="flex gap-2" style="align-items:center;">
               <span>{{ line.line_total|floatformat:0 }} F CFA</span>
               <form method="post">
@@ -197,7 +129,6 @@
               </form>
             </div>
           </div>
-          {% if not line.is_gift %}
           <form method="post" class="flex gap-2 mt-2" style="align-items:center;">
             {% csrf_token %}
             <input type="hidden" name="action" value="update_line_discount">
@@ -206,7 +137,6 @@
             <input type="number" name="discount_amount" value="{{ line.discount|default:0 }}" min="0" max="{{ line.raw_total }}" style="width:100px;">
             <button type="submit" class="btn btn-outline btn-sm">Appliquer</button>
           </form>
-          {% endif %}
         </div>
         {% endfor %}
       {% endif %}
@@ -247,6 +177,7 @@
         <div class="field" id="payment-section">
           <label>Mode(s) de paiement</label>
           {% for value, display in payment_methods %}
+          {% with restored_amount=selected_payments|default:"" %}
           <div class="flex gap-2 mt-2" style="align-items:center;">
             <label style="display:flex; align-items:center; gap:6px; font-weight:400; margin:0; flex:1;">
               <input type="checkbox" name="payment_method" value="{{ value }}" class="payment-method-checkbox" style="width:auto;" {% if value in selected_payments %}checked{% endif %}>
@@ -256,6 +187,7 @@
               value="{% if value in selected_payments %}{{ selected_payments|get_item:value }}{% endif %}"
               style="width:120px; {% if value in selected_payments %}display:block;{% else %}display:none;{% endif %}">
           </div>
+          {% endwith %}
           {% endfor %}
         </div>
 

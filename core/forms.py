@@ -2,8 +2,10 @@
 
 from django import forms
 from django.core.validators import RegexValidator
+from datetime import date, timedelta
+from django.db.models import Sum
 
-from .models import CashSession, Company, DiscountType, PaymentMethod, Product, User
+from .models import CashSession, Company, Depense, DiscountType, PaymentMethod, Product, Service, User
 
 _phone_validator = RegexValidator(
     regex=r"^\d{10}$",
@@ -108,7 +110,7 @@ class ProductForm(forms.ModelForm):
         model = Product
         fields = ["name", "description", "price", "stock", "critical_threshold"]
         widgets = {
-            "name": forms.TextInput(attrs={"placeholder": "Ex : Disque de frein ventilé"}),
+            "name": forms.TextInput(attrs={"placeholder": "Ex : Paracetamol"}),
             "description": forms.Textarea(attrs={"placeholder": "Détails optionnels du produit", "rows": 3}),
             "price": forms.NumberInput(attrs={"placeholder": "Ex : 15000"}),
             "stock": forms.NumberInput(attrs={"placeholder": "Ex : 20"}),
@@ -172,3 +174,59 @@ class ValidateSaleForm(forms.Form):
     notes = forms.CharField(label="Notes", required=False, widget=forms.Textarea(attrs={"rows": 2}))
     discount_type = forms.ChoiceField(label="Type de réduction", choices=DiscountType.choices, required=False)
     discount_value = forms.FloatField(label="Valeur de la réduction", required=False, min_value=0)
+
+
+class ServiceForm(forms.ModelForm):
+    class Meta:
+        model = Service
+        fields = ["name", "description", "default_price", "is_active"]
+        labels = {
+            "name": "Désignation de la prestation",
+            "description": "Description",
+            "default_price": "Prix indicatif (F CFA)",
+            "is_active": "Prestation active",
+        }
+        widgets = {
+            "name": forms.TextInput(attrs={"placeholder": "Ex : Lavage complet véhicule"}),
+            "description": forms.Textarea(attrs={"rows": 2, "placeholder": "Détails optionnels"}),
+            "default_price": forms.NumberInput(attrs={"placeholder": "Ex : 3000"}),
+        }
+
+    def clean_default_price(self):
+        price = self.cleaned_data["default_price"]
+        if price < 0:
+            raise forms.ValidationError("Le prix indicatif ne peut pas être négatif.")
+        return price
+
+
+class DepenseForm(forms.ModelForm):
+    class Meta:
+        model = Depense
+        fields = ["date", "type_depense", "label", "amount", "comment"]
+        labels = {
+            "date": "Date", "type_depense": "Type de dépense", "label": "Libellé",
+            "amount": "Montant (F CFA)", "comment": "Commentaire",
+        }
+        widgets = {
+            "date": forms.DateInput(attrs={"type": "date"}),
+            "type_depense": forms.TextInput(attrs={"placeholder": "Ex : Savon Liquide ou OMO"}),
+            "label": forms.TextInput(attrs={"placeholder": "Ex : Savon liquide"}),
+            "amount": forms.NumberInput(attrs={"placeholder": "Ex : 2000"}),
+            "comment": forms.TextInput(attrs={"placeholder": "Optionnel"}),
+        }
+
+    def clean_amount(self):
+        amount = self.cleaned_data["amount"]
+        if amount <= 0:
+            raise forms.ValidationError("Le montant doit être positif.")
+        return amount
+
+
+class ApprovisionnementForm(forms.Form):
+    quantity = forms.IntegerField(label="Quantité ajoutée", min_value=1)
+    unit_cost = forms.FloatField(label="Prix d'achat unitaire (F CFA, optionnel)", required=False, min_value=0)
+    date = forms.DateField(label="Date", widget=forms.DateInput(attrs={"type": "date"}))
+    comment = forms.CharField(
+        label="Commentaire", required=False,
+        widget=forms.TextInput(attrs={"placeholder": "Ex : Fournisseur X, bon de livraison n°..."}),
+    )

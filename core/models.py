@@ -71,7 +71,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     class Role(models.TextChoices):
         ADMIN = "ADMIN", "Administrateur"
-        SELLER = "SELLER", "Vendeur"
+        SELLER = "SELLER", "Gérant"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     full_name = models.CharField(max_length=150)
@@ -138,10 +138,39 @@ class DiscountType(models.TextChoices):
     AMOUNT = "AMOUNT", "Montant fixe"
 
 
+class Service(models.Model):
+    """Prestation proposée par l'entreprise (catalogue).
+    `default_price` est un prix indicatif : il reste modifiable au moment de
+    la vente, car le prix d'un service n'est pas fixe."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="services")
+    name = models.CharField(max_length=200)
+    description = models.TextField(null=True, blank=True)
+    default_price = models.FloatField()
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "services"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class SaleType(models.TextChoices):
+    PRODUCT = "PRODUCT", "Produits"
+    SERVICE = "SERVICE", "Services"
+    MIXED = "MIXED", "Mixte (produits + services)"
+
+
 class Sale(models.Model):
     """Vente / facture générée depuis la Caisse. `id` sert de numéro de facture."""
 
     company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name="sales")
+    sale_type = models.CharField(max_length=10, choices=SaleType.choices, default=SaleType.PRODUCT)
     client_name = models.CharField(max_length=200, null=True, blank=True)
     client_phone = models.CharField(
         max_length=10, 
@@ -207,12 +236,14 @@ class CashSession(models.Model):
 
 
 class SaleItem(models.Model):
-    """Ligne d'une vente. `is_gift` : produit offert (0 F CFA dans les totaux).
-    `discount_amount` : remise en F CFA appliquée sur cette ligne uniquement
-    (en plus de l'éventuelle réduction globale de la vente)."""
+    """Ligne d'une vente : soit un produit, soit une prestation du catalogue,
+    soit une ligne libre (désignation et prix saisis à la volée).
+    `is_gift` : offert. `discount_amount` : remise sur cette ligne."""
 
     sale = models.ForeignKey(Sale, related_name="items", on_delete=models.CASCADE)
-    product = models.ForeignKey(Product, related_name="sale_items", on_delete=models.PROTECT)
+    product = models.ForeignKey(Product, related_name="sale_items", on_delete=models.PROTECT, null=True, blank=True)
+    service = models.ForeignKey(Service, related_name="sale_items", on_delete=models.PROTECT, null=True, blank=True)
+    label = models.CharField(max_length=200, blank=True)
     quantity = models.IntegerField()
     price = models.FloatField()
     is_gift = models.BooleanField(default=False)
@@ -220,3 +251,54 @@ class SaleItem(models.Model):
 
     class Meta:
         db_table = "sale_items"
+
+    @property
+    def designation(self):
+        """Libellé à afficher : produit, prestation du catalogue, ou ligne libre."""
+        if self.product_id:
+            return self.product.name
+        if self.service_id:
+            return self.service.name
+        return self.label or "Prestation"
+
+
+class Depense(models.Model):
+    """Dépense de l'entreprise (achats, factures, charges...), utilisée pour
+    calculer le bénéfice (CA - dépenses) sur le tableau de bord."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="depenses")
+    date = models.DateField()
+    type_depense = models.CharField(max_length=100)
+    label = models.CharField(max_length=200)
+    amount = models.FloatField()
+    comment = models.CharField(max_length=255, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "depenses"
+        ordering = ["-date", "-created_at"]
+
+    def __str__(self):
+        return f"{self.label} ({self.amount} F CFA)"
+
+
+class Approvisionnement(models.Model):
+    """Entrée de stock (réapprovisionnement) d'un produit : incrémente le
+    stock du produit et reste consultable dans un historique dédié."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="approvisionnements")
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name="approvisionnements")
+    quantity = models.IntegerField()
+    unit_cost = models.FloatField(null=True, blank=True)
+    date = models.DateField()
+    comment = models.CharField(max_length=255, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "approvisionnements"
+        ordering = ["-date", "-created_at"]
+
+    def __str__(self):
+        return f"+{self.quantity} {self.product.name}"

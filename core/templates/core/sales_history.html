@@ -48,7 +48,7 @@
         <td>{{ sale.created_at|date:"d/m/Y" }} <span class="text-muted">{{ sale.created_at|date:"H:i" }}</span></td>
         <td>{{ sale.client_name|default:"Client comptoir" }}</td>
         {% if is_admin %}<td>{{ sale.seller.full_name }}</td>{% endif %}
-        <td>{% for item in sale.items.all %}{{ item.product.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+        <td>{% for item in sale.items.all %}{{ item.designation }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
         <td>{% for p in sale.payments.all %}{{ p.get_method_display }}{% if not forloop.last %} + {% endif %}{% endfor %}</td>
         <td style="font-weight:600;">{{ sale.total|floatformat:0 }} F CFA</td>
         <td class="text-right"><a href="{% url 'invoice' sale.id %}" class="btn btn-outline btn-sm">Voir</a></td>

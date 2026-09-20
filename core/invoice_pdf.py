@@ -148,7 +148,8 @@ def build_invoice_pdf(sale, config) -> io.BytesIO:
         c.setFont("Helvetica", 7.5)
         c.setFillColorRGB(0, 0, 0)
         c.drawString(col_qty + 4, row_y + 4, str(item.quantity))
-        label = item.product.name[:26]
+        #label = item.product.name[:26]
+        label = item.designation[:26]
         if item.is_gift:
             label += "  (OFFERT)"
         c.drawString(col_desc + 4, row_y + 4, label)

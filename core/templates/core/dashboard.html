@@ -6,14 +6,59 @@
 {% if not company %}
   <div class="alert alert-warning">Créez d'abord une entreprise (page « Entreprises ») pour voir son tableau de bord.</div>
 {% else %}
-  <div class="flex" style="gap:16px; flex-wrap:wrap; margin-bottom:16px;">
-    <div class="card" style="flex:1; min-width:220px;">
+  <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:16px;">
+    <div class="card" style="border-left:4px solid #f97316;">
       <p class="text-muted" style="margin:0 0 4px;">Chiffre d'affaires du jour</p>
       <p style="font-size:22px; font-weight:700; margin:0;">{{ revenue_today|floatformat:0 }} F CFA</p>
     </div>
-    <div class="card" style="flex:1; min-width:220px;">
-      <p class="text-muted" style="margin:0 0 4px;">Nombre de ventes (jour)</p>
-      <p style="font-size:22px; font-weight:700; margin:0;">{{ sales_count_today }}</p>
+    <div class="card" style="border-left:4px solid #f97316;">
+      <p class="text-muted" style="margin:0 0 4px;">Chiffre d'affaires du mois</p>
+      <p style="font-size:22px; font-weight:700; margin:0;">{{ revenue_month|floatformat:0 }} F CFA</p>
+    </div>
+    <div class="card" style="border-left:4px solid #dc2626;">
+      <p class="text-muted" style="margin:0 0 4px;">Dépenses du mois</p>
+      <p style="font-size:22px; font-weight:700; margin:0;">{{ expenses_month|floatformat:0 }} F CFA</p>
+    </div>
+    <div class="card" style="border-left:4px solid #16a34a;">
+      <p class="text-muted" style="margin:0 0 4px;">Bénéfice du mois</p>
+      <p style="font-size:22px; font-weight:700; margin:0;">{{ profit_month|floatformat:0 }} F CFA</p>
+    </div>
+    <div class="card" style="border-left:4px solid #7c3aed;">
+      <p class="text-muted" style="margin:0 0 4px;">Prestations aujourd'hui</p>
+      <p style="font-size:22px; font-weight:700; margin:0;">{{ services_today_count }}</p>
+    </div>
+  </div>
+
+  <div class="card mb-4" style="border-left:4px solid #16a34a; max-width:320px;">
+    <p class="text-muted" style="margin:0 0 4px;">Bénéfice de l'année</p>
+    <p style="font-size:26px; font-weight:700; margin:0;">{{ profit_year|floatformat:0 }} F CFA</p>
+  </div>
+
+  <div style="display:grid; grid-template-columns:2fr 1fr; gap:16px; margin-bottom:16px;">
+    <div class="card">
+      <h2 style="font-size:15px; margin-top:0;">Évolution du chiffre d'affaires (12 derniers mois)</h2>
+      <svg viewBox="0 0 {{ chart_width }} {{ chart_height }}" style="width:100%; height:220px;">
+        <polyline points="{{ revenue_polyline_points }}" fill="none" stroke="var(--brand-500)" stroke-width="2"></polyline>
+        {% for m in monthly_series %}
+        <circle cx="{{ m.x }}" cy="{{ m.y }}" r="3" fill="var(--brand-600)"></circle>
+        {% endfor %}
+      </svg>
+      <div class="flex-between text-muted" style="font-size:11px;">
+        <span>{{ monthly_series.0.label }}</span>
+        <span>{{ monthly_series|last }}{{ "" }}</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="font-size:15px; margin-top:0;">CA du mois par type</h2>
+      <svg viewBox="0 0 160 200" style="width:100%; height:200px;">
+        <rect x="20" y="{{ product_bar_y }}" width="40" height="{{ product_bar_height }}" fill="var(--brand-600)"></rect>
+        <rect x="90" y="{{ service_bar_y }}" width="40" height="{{ service_bar_height }}" fill="#7c3aed"></rect>
+      </svg>
+      <div class="flex-between text-muted" style="font-size:12px;">
+        <span>Produits<br>{{ ca_products_month|floatformat:0 }} F CFA</span>
+        <span>Services<br>{{ ca_services_month|floatformat:0 }} F CFA</span>
+      </div>
     </div>
   </div>
 
@@ -28,9 +73,7 @@
         <tbody>
           {% for p in low_stock_products %}
           <tr>
-            <td>{{ p.name }}</td>
-            <td>{{ p.stock }}</td>
-            <td>{{ p.critical_threshold }}</td>
+            <td>{{ p.name }}</td><td>{{ p.stock }}</td><td>{{ p.critical_threshold }}</td>
             <td><span class="badge badge-red">⚠️ RAVITAILLEMENT REQUIS</span></td>
           </tr>
           {% endfor %}

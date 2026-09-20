@@ -44,7 +44,7 @@
       <tr>
         <td style="text-align:center;">{{ item.quantity }}</td>
         <td style="text-align:center;">
-          {{ item.product.name }}{% if item.is_gift %} <strong>(OFFERT)</strong>{% endif %}
+          {{ item.designation }}{% if item.is_gift %} <strong>(OFFERT)</strong>{% endif %}
           {% if item.discount_amount > 0 %}<br><span style="color:var(--red-600); font-size:9px;">Remise : -{{ item.discount_amount|floatformat:0 }} F CFA</span>{% endif %}
         </td>
         <td style="text-align:center;">{% if item.is_gift %}0{% else %}{{ item.price|floatformat:0 }}{% endif %}</td>
