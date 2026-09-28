@@ -1,4 +1,8 @@
 {% extends "core/base.html" %}
+<!-- Exemple dans votre boucle d'affichage des ratios -->
+<span>{{ ratio.month|floatformat:2 }} %</span>
+<span>{{ ratio.year|floatformat:2 }} %</span>
+{% load l10n %}
 {% block title %}Dashboard - Facturier{% endblock %}
 {% block content %}
 <h1 style="margin-bottom:16px;">Tableau de bord</h1>
@@ -12,15 +16,15 @@
       <p style="font-size:22px; font-weight:700; margin:0;">{{ revenue_today|floatformat:0 }} F CFA</p>
     </div>
     <div class="card" style="border-left:4px solid #f97316;">
-      <p class="text-muted" style="margin:0 0 4px;">Chiffre d'affaires du mois</p>
+      <p class="text-muted" style="margin:0 0 4px;">Chiffre d'affaires mensuel</p>
       <p style="font-size:22px; font-weight:700; margin:0;">{{ revenue_month|floatformat:0 }} F CFA</p>
     </div>
     <div class="card" style="border-left:4px solid #dc2626;">
-      <p class="text-muted" style="margin:0 0 4px;">Dépenses du mois</p>
+      <p class="text-muted" style="margin:0 0 4px;">Dépenses mensuelles</p>
       <p style="font-size:22px; font-weight:700; margin:0;">{{ expenses_month|floatformat:0 }} F CFA</p>
     </div>
     <div class="card" style="border-left:4px solid #16a34a;">
-      <p class="text-muted" style="margin:0 0 4px;">Bénéfice du mois</p>
+      <p class="text-muted" style="margin:0 0 4px;">Bénéfice mensuel</p>
       <p style="font-size:22px; font-weight:700; margin:0;">{{ profit_month|floatformat:0 }} F CFA</p>
     </div>
     <div class="card" style="border-left:4px solid #7c3aed;">
@@ -29,32 +33,66 @@
     </div>
   </div>
 
+  <h2 style="font-size:16px; margin:8px 0 12px;">Dépenses en pourcentage</h2>
+  <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:16px; margin-bottom:16px;">
+    {% for ratio in expense_ratios %}
+    <div class="card" style="border-left:4px solid #dc2626;">
+      <p class="text-muted" style="margin:0 0 12px; font-weight:600;">{{ ratio.title }}</p>
+
+      <div style="margin-bottom:12px;">
+        <div class="flex-between" style="font-size:13px;">
+          <span class="text-muted">Ce mois</span>
+          <strong style="font-size:18px;">{% if ratio.month is None %}—{% else %}{{ ratio.month }} %{% endif %}</strong>
+        </div>
+        <div style="height:6px; border-radius:3px; background:var(--gray-100); margin-top:6px;">
+          <div style="height:6px; border-radius:3px; background:#dc2626; width:{{ ratio.month_bar }}%;"></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="flex-between" style="font-size:13px;">
+          <span class="text-muted">Cette année</span>
+          <strong style="font-size:18px;">{% if ratio.year is None %}—{% else %}{{ ratio.year }} %{% endif %}</strong>
+        </div>
+        <div style="height:6px; border-radius:3px; background:var(--gray-100); margin-top:6px;">
+          <div style="height:6px; border-radius:3px; background:#dc2626; width:{{ ratio.year_bar }}%;"></div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+
   <div class="card mb-4" style="border-left:4px solid #16a34a; max-width:320px;">
-    <p class="text-muted" style="margin:0 0 4px;">Bénéfice de l'année</p>
+    <p class="text-muted" style="margin:0 0 4px;">Bénéfice annuel</p>
     <p style="font-size:26px; font-weight:700; margin:0;">{{ profit_year|floatformat:0 }} F CFA</p>
   </div>
 
   <div style="display:grid; grid-template-columns:2fr 1fr; gap:16px; margin-bottom:16px;">
     <div class="card">
-      <h2 style="font-size:15px; margin-top:0;">Évolution du chiffre d'affaires (12 derniers mois)</h2>
-      <svg viewBox="0 0 {{ chart_width }} {{ chart_height }}" style="width:100%; height:220px;">
+      <h2 style="font-size:15px; margin-top:0;">Évolution du chiffre d'affaires annuel</h2>
+      {% localize off %}
+      <svg viewBox="0 0 {{ chart_width }} {{ chart_height }}" style="width:100%; height:220px; overflow:visible;">
         <polyline points="{{ revenue_polyline_points }}" fill="none" stroke="var(--brand-500)" stroke-width="2"></polyline>
         {% for m in monthly_series %}
         <circle cx="{{ m.x }}" cy="{{ m.y }}" r="3" fill="var(--brand-600)"></circle>
         {% endfor %}
       </svg>
+      {% endlocalize %}
       <div class="flex-between text-muted" style="font-size:11px;">
         <span>{{ monthly_series.0.label }}</span>
-        <span>{{ monthly_series|last }}{{ "" }}</span>
+        {% with last_month=monthly_series|last %}<span>{{ last_month.label }}</span>{% endwith %}
       </div>
     </div>
 
     <div class="card">
       <h2 style="font-size:15px; margin-top:0;">CA du mois par type</h2>
+      {% localize off %}
       <svg viewBox="0 0 160 200" style="width:100%; height:200px;">
         <rect x="20" y="{{ product_bar_y }}" width="40" height="{{ product_bar_height }}" fill="var(--brand-600)"></rect>
         <rect x="90" y="{{ service_bar_y }}" width="40" height="{{ service_bar_height }}" fill="#7c3aed"></rect>
       </svg>
+      {% endlocalize %}
       <div class="flex-between text-muted" style="font-size:12px;">
         <span>Produits<br>{{ ca_products_month|floatformat:0 }} F CFA</span>
         <span>Services<br>{{ ca_services_month|floatformat:0 }} F CFA</span>

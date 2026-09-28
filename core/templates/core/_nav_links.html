@@ -10,7 +10,7 @@
 {% if user.role == "ADMIN" %}
   <a href="{% url 'services_list' %}" class="nav-link {% if active == 'services_list' or active == 'service_edit' %}active{% endif %}">🩺 Prestations</a>
   <a href="{% url 'companies_list' %}" class="nav-link {% if active == 'companies_list' or active == 'company_edit' %}active{% endif %}">🏢 Entreprises</a>
-  <a href="{% url 'users_list' %}" class="nav-link {% if active == 'users_list' %}active{% endif %}">👥 Vendeurs</a>
+  <a href="{% url 'users_list' %}" class="nav-link {% if active == 'users_list' %}active{% endif %}">👥 Utilisateurs</a>
   <a href="{% url 'sales_history' %}" class="nav-link {% if active == 'sales_history' %}active{% endif %}">🕘 Historique</a>
 {% endif %}
 <a href="{% url 'caisse' %}" class="nav-link {% if active == 'caisse' %}active{% endif %}">🛒 Caisse</a>

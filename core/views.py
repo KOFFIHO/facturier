@@ -1,6 +1,3 @@
-# Vues Django (MVT) du Facturier Automatique : authentification, entreprises
-# (multi-tenant), vendeurs, produits (+ import Excel), Caisse (panier en
-# session), session de caisse, historique, facture (HTML + PDF).
 import uuid
 from django.core.paginator import Paginator
 
@@ -12,7 +9,6 @@ from django.db.models import F, Q, ProtectedError, Sum
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
-from django.db import transaction
 from django.http import FileResponse, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -135,7 +131,28 @@ def _last_12_month_starts(today):
         months.append(date(yy, mm, 1))
     return months
 
-@admin_required
+
+
+def _percentage(part, whole, decimals=2):
+    """(part / whole) * 100 arrondi au nombre de décimales spécifié, ou None si non calculable
+    (dénominateur nul ou négatif : ex. bénéfice <= 0)."""
+    if whole is None or whole <= 0:
+        return None
+    return round((part / whole) * 100, decimals)
+
+
+def _ratio_entry(title, month_part, month_whole, year_part, year_whole, decimals=2):
+    month = _percentage(month_part, month_whole, decimals=decimals)
+    year = _percentage(year_part, year_whole, decimals=decimals)
+    return {
+        "title": title,
+        "month": month,
+        "year": year,
+        "month_bar": min(month, 100) if month is not None else 0,
+        "year_bar": min(year, 100) if year is not None else 0,
+    }
+
+
 @admin_required
 def dashboard_view(request):
     company = get_active_company(request)
@@ -156,14 +173,33 @@ def dashboard_view(request):
     sales_year = Sale.objects.filter(company=company, created_at__date__gte=year_start)
     revenue_year = sales_year.aggregate(Sum("total"))["total__sum"] or 0
 
-    depenses_month = Depense.objects.filter(company=company, date__gte=month_start, date__lte=month_end)
-    expenses_month = depenses_month.aggregate(Sum("amount"))["amount__sum"] or 0
+    # 1. Dépenses classiques (loyers, factures, etc.)
+    charges_month = Depense.objects.filter(company=company, date__gte=month_start, date__lte=month_end).aggregate(Sum("amount"))["amount__sum"] or 0
+    charges_year = Depense.objects.filter(company=company, date__gte=year_start).aggregate(Sum("amount"))["amount__sum"] or 0
 
-    depenses_year = Depense.objects.filter(company=company, date__gte=year_start)
-    expenses_year = depenses_year.aggregate(Sum("amount"))["amount__sum"] or 0
+    # 2. Coût d'achat des marchandises / Approvisionnements
+    achats_month = Approvisionnement.objects.filter(
+        company=company, date__gte=month_start, date__lte=month_end
+    ).aggregate(total_cost=Sum(F('unit_cost') * F('quantity')))['total_cost'] or 0
 
+    achats_year = Approvisionnement.objects.filter(
+        company=company, date__gte=year_start
+    ).aggregate(total_cost=Sum(F('unit_cost') * F('quantity')))['total_cost'] or 0
+
+    # 3. Total des dépenses réelles (Charges diverses + Achats/Approvisionnements)
+    expenses_month = charges_month + achats_month
+    expenses_year = charges_year + achats_year
+
+    # 4. Calculs corrects des bénéfices
     profit_month = revenue_month - expenses_month
     profit_year = revenue_year - expenses_year
+
+    expense_ratios = [
+        _ratio_entry("Dépenses par rapport au chiffre d'affaires",
+                     expenses_month, revenue_month, expenses_year, revenue_year, decimals=2),
+        _ratio_entry("Dépenses par rapport au bénéfice",
+                     expenses_month, profit_month, expenses_year, profit_year, decimals=2),
+    ]
 
     services_today_count = SaleItem.objects.filter(
         sale__company=company, sale__created_at__gte=start_of_day, product__isnull=True,
@@ -233,6 +269,9 @@ def dashboard_view(request):
         "product_bar_height": product_bar_height,
         "service_bar_height": service_bar_height,
         "bar_max_height": bar_max_height,
+        "product_bar_y": product_bar_y,
+        "service_bar_y": service_bar_y,
+        "expense_ratios": expense_ratios,
     })
 
 # ---------------------------------------------------------------------------
@@ -554,15 +593,6 @@ def cash_session_close_view(request):
         session.actual_closed_at = timezone.now()
         session.save(update_fields=["is_closed", "actual_closed_at"])
     return redirect("logout")
-
-def _get_cart(request):
-    return request.session.setdefault("cart", {})
-
-
-def _save_cart(request, cart):
-    request.session["cart"] = cart
-    request.session.modified = True
-
 
 def _flash_caisse_form(request):
     methods = request.POST.getlist("payment_method")
@@ -899,7 +929,6 @@ def sales_history_view(request):
 # ---------------------------------------------------------------------------
 
 @login_required
-@login_required
 def invoice_view(request, sale_id):
     sale = get_object_or_404(Sale, id=sale_id)
     items_display = []
@@ -917,7 +946,7 @@ def invoice_pdf_view(request, sale_id):
     pdf_buffer = build_invoice_pdf(sale, sale.company)
     return FileResponse(
         pdf_buffer, content_type="application/pdf",
-        filename=f"facture-{sale.invoice_number}.pdf",
+        filename=f"{sale.invoice_code}.pdf",
         as_attachment=True,
     )
 
@@ -1297,7 +1326,6 @@ def product_restock_view(request, product_id):
     return render(request, "core/product_restock_form.html", {"product": product, "form": form})
 
 
-@manager_required
 @manager_required
 def approvisionnements_list_view(request):
     """Historique des approvisionnements (entrées de stock) de l'entreprise active."""

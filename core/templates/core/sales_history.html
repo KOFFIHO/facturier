@@ -44,7 +44,7 @@
     <tbody>
       {% for sale in sales %}
       <tr>
-        <td>#{{ sale.invoice_number }}</td>
+        <td>{{ sale.invoice_code }}</td>
         <td>{{ sale.created_at|date:"d/m/Y" }} <span class="text-muted">{{ sale.created_at|date:"H:i" }}</span></td>
         <td>{{ sale.client_name|default:"Client comptoir" }}</td>
         {% if is_admin %}<td>{{ sale.seller.full_name }}</td>{% endif %}

@@ -5,7 +5,7 @@
 
 import io
 import os
-
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.lib.pagesizes import A5
 from reportlab.pdfgen import canvas
 
@@ -39,6 +39,24 @@ def _resolve_media_path(image_field):
         return None
 
 
+def _wrap_text(text, max_width, font_name, font_size):
+    """Découpe un texte en plusieurs lignes pour qu'il tienne dans max_width
+    (évite les désignations tronquées, ex. noms de médicaments longs)."""
+    words = text.split(" ")
+    lines = []
+    current = ""
+    for word in words:
+        trial = f"{current} {word}".strip()
+        if not current or stringWidth(trial, font_name, font_size) <= max_width:
+            current = trial
+        else:
+            lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines or [""]
+
+
 def build_invoice_pdf(sale, config) -> io.BytesIO:
     """Construit le PDF (format A5) de la facture et le retourne en mémoire."""
     buffer = io.BytesIO()
@@ -47,9 +65,6 @@ def build_invoice_pdf(sale, config) -> io.BytesIO:
     top = PAGE_HEIGHT - MARGIN
 
     # ---- En-tête : "Merci" à gauche, logo rond à droite ----
-    c.setFont("Helvetica-Oblique", 15)
-    c.setFillColorRGB(0.07, 0.07, 0.07)
-    c.drawString(MARGIN, top - 14, "Merci")
 
     logo_cx = MARGIN + CONTENT_WIDTH - 22
     logo_cy = top - 16
@@ -95,7 +110,7 @@ def build_invoice_pdf(sale, config) -> io.BytesIO:
     c.setFont("Helvetica-Bold", 8.5)
     c.drawString(MARGIN, y, "N° Facture :")
     c.setFont("Helvetica", 8.5)
-    c.drawString(MARGIN + 62, y, str(sale.invoice_number))
+    c.drawString(MARGIN + 62, y, sale.invoice_code)
     c.setFont("Helvetica-Bold", 8.5)
     c.drawString(MARGIN + CONTENT_WIDTH - 110, y, "Date :")
     c.setFont("Helvetica", 8.5)
@@ -139,23 +154,45 @@ def build_invoice_pdf(sale, config) -> io.BytesIO:
 
     items = list(sale.items.all())
     table_top = y
+    desc_max_width = col_price - col_desc - 8
+    line_height = 8.5
+
     for item in items:
+        label = item.designation
+        if item.is_gift:
+            label += " (OFFERT)"
+        desc_lines = _wrap_text(label, desc_max_width, "Helvetica", 7.5)
+
+        montant = 0 if item.is_gift else max(0, item.price * item.quantity - item.discount_amount)
+        amount_lines = [f"{round(montant):,}".replace(",", " ")]
+        if item.discount_amount > 0:
+            amount_lines.append(f"(-{round(item.discount_amount):,} F CFA)".replace(",", " "))
+
+        row_h = max(14, max(len(desc_lines), len(amount_lines)) * line_height + 5)
         row_y = y - row_h
+        text_top_y = row_y + row_h - 9
+
         c.setStrokeColorRGB(0.82, 0.82, 0.82)
         c.setLineWidth(0.5)
         c.rect(MARGIN, row_y, CONTENT_WIDTH, row_h, stroke=1, fill=0)
 
-        c.setFont("Helvetica", 7.5)
         c.setFillColorRGB(0, 0, 0)
-        c.drawString(col_qty + 4, row_y + 4, str(item.quantity))
-        #label = item.product.name[:26]
-        label = item.designation[:26]
-        if item.is_gift:
-            label += "  (OFFERT)"
-        c.drawString(col_desc + 4, row_y + 4, label)
-        c.drawString(col_price + 4, row_y + 4, "0" if item.is_gift else f"{round(item.price):,}".replace(",", " "))
-        montant = 0 if item.is_gift else max(0, item.price * item.quantity - getattr(item, "discount_amount", 0))
-        c.drawString(col_amount + 4, row_y + 4, f"{round(montant):,}".replace(",", " "))
+        c.setFont("Helvetica", 7.5)
+        c.drawString(col_qty + 4, text_top_y, str(item.quantity))
+        c.drawString(col_price + 4, text_top_y, "0" if item.is_gift else f"{round(item.price):,}".replace(",", " "))
+
+        for i, line in enumerate(desc_lines):
+            c.drawString(col_desc + 4, text_top_y - (i * line_height), line)
+
+        for i, line in enumerate(amount_lines):
+            if i > 0:
+                c.setFillColorRGB(0.7, 0.1, 0.1)
+                c.setFont("Helvetica", 6.5)
+            c.drawString(col_amount + 4, text_top_y - (i * line_height), line)
+            if i > 0:
+                c.setFillColorRGB(0, 0, 0)
+                c.setFont("Helvetica", 7.5)
+
         y = row_y
 
     for x in [col_qty, col_desc, col_price, col_amount, MARGIN + CONTENT_WIDTH]:

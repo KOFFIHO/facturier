@@ -59,7 +59,7 @@
       <h2 style="font-size:14px; margin-top:0;">📦 Produits</h2>
       <div class="table-wrap">
       <table>
-        <thead><tr><th></th><th>Désignation</th><th>Stock</th><th>Prix unitaire</th><th>Ajouter</th></tr></thead>
+        <thead><tr><th></th><th>Désignation</th><th>Quantité en stock</th><th>Prix unitaire</th><th>Ajouter</th></tr></thead>
         <tbody>
           {% for p in products %}
           <tr data-product-row data-product-name="{{ p.name }}">
@@ -215,7 +215,7 @@
         {% csrf_token %}
         <input type="hidden" name="action" value="validate_sale">
         <div id="caisse-calc-data" data-subtotal="{{ sub_total }}" data-tvarate="{{ company.tva_rate }}"></div>
-
+        
         <div class="field"><label>Nom du client (optionnel)</label><input type="text" name="client_name" value="{{ client_name_value|default:'' }}"></div>
         <div class="field"><label>Téléphone du client (optionnel)</label><input type="text" name="client_phone" value="{{ client_phone_value|default:'' }}"></div>
         <div class="field"><label>Notes (optionnel)</label><textarea name="notes" rows="2">{{ notes_value|default:'' }}</textarea></div>

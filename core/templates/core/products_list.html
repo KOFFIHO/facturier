@@ -23,7 +23,7 @@
       <div class="field"><label>Description</label>{{ form.description }}</div>
       <div class="field-row">
         <div class="field"><label>Prix (F CFA)</label>{{ form.price }}</div>
-        <div class="field"><label>Stock</label>{{ form.stock }}</div>
+        <div class="field"><label>Quantité</label>{{ form.stock }}</div>
         <div class="field"><label>Seuil critique</label>{{ form.critical_threshold }}</div>
       </div>
       {% if form.non_field_errors %}<ul class="errorlist">{{ form.non_field_errors }}</ul>{% endif %}
@@ -34,7 +34,7 @@
   <div class="card">
     <div class="table-wrap">
     <table>
-      <thead><tr><th>Désignation</th><th>Prix</th><th>Stock</th><th>Seuil critique</th><th class="text-right">Actions</th></tr></thead>
+      <thead><tr><th>Désignation</th><th>Prix</th><th>Quantité en stock</th><th>Seuil critique</th><th class="text-right">Actions</th></tr></thead>
       <tbody>
         {% for p in products %}
         <tr>

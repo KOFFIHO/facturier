@@ -199,6 +199,11 @@ class Sale(models.Model):
     def invoice_number(self):
         return self.id
 
+    @property
+    def invoice_code(self):
+        """Numéro de facture formaté pour affichage : FAC-<année>-<0000>."""
+        return f"FAC-{self.created_at.year}-{self.id:04d}"
+
     def __str__(self):
         return f"Facture #{self.id}"
 

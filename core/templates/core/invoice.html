@@ -11,8 +11,7 @@
 </div>
 
 <div class="invoice-box">
-  <div class="invoice-header">
-    <p class="invoice-cursive">Merci</p>
+  <div class="invoice-header" style="justify-content:flex-end;">
     <div class="invoice-logo">
       {% if company.logo %}<img src="{{ company.logo.url }}" alt="Logo" onerror="this.replaceWith(Object.assign(document.createElement('span'), {style:'font-size:7px;color:#b91c1c;text-align:center;', textContent:'Logo introuvable'}));">{% else %}<span style="font-size:7px; font-style:italic; text-align:center;">Votre logo ici</span>{% endif %}
     </div>
@@ -26,7 +25,7 @@
   </div>
 
   <div class="invoice-meta">
-    <span><strong>N° Facture :</strong> {{ sale.invoice_number }}</span>
+    <span><strong>N° Facture :</strong> {{ sale.invoice_code }}</span>
     <span><strong>Date :</strong> {{ sale.created_at|date:"d/m/Y" }} à {{ sale.created_at|date:"H:i" }}</span>
   </div>
 
@@ -45,10 +44,12 @@
         <td style="text-align:center;">{{ item.quantity }}</td>
         <td style="text-align:center;">
           {{ item.designation }}{% if item.is_gift %} <strong>(OFFERT)</strong>{% endif %}
-          {% if item.discount_amount > 0 %}<br><span style="color:var(--red-600); font-size:9px;">Remise : -{{ item.discount_amount|floatformat:0 }} F CFA</span>{% endif %}
         </td>
         <td style="text-align:center;">{% if item.is_gift %}0{% else %}{{ item.price|floatformat:0 }}{% endif %}</td>
-        <td style="text-align:center;">{{ entry.net_amount|floatformat:0 }} F CFA</td>
+        <td style="text-align:center;">
+          {{ entry.net_amount|floatformat:0 }} F CFA
+          {% if item.discount_amount > 0 %}<br><span style="color:var(--red-600); font-size:9px;">(-{{ item.discount_amount|floatformat:0 }} F CFA)</span>{% endif %}
+        </td>
       </tr>
       {% endwith %}
       {% endfor %}
