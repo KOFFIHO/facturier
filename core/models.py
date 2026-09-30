@@ -189,7 +189,8 @@ class Sale(models.Model):
     total = models.FloatField()
     created_at = models.DateTimeField(auto_now_add=True)
 
-    seller = models.ForeignKey(User, related_name="sales", on_delete=models.PROTECT)
+    seller = models.ForeignKey(User, related_name="sales", on_delete=models.SET_NULL, null=True, blank=True)
+    seller_name = models.CharField(max_length=150, blank=True, default="")  # copie du nom, pour le cloud (jamais de compte/mot de passe synchronisé)
 
     class Meta:
         db_table = "sales"
@@ -307,3 +308,16 @@ class Approvisionnement(models.Model):
 
     def __str__(self):
         return f"+{self.quantity} {self.product.name}"
+
+class SyncState(models.Model):
+    """Mémorise, par type de donnée, l'horodatage de la dernière
+    synchronisation réussie vers le serveur en ligne (cloud)."""
+
+    key = models.CharField(max_length=50, unique=True)
+    last_synced_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "sync_state"
+
+    def __str__(self):
+        return f"{self.key} -> {self.last_synced_at}"

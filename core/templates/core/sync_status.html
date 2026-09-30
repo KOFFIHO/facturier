@@ -1,0 +1,40 @@
+{% extends "core/base.html" %}
+{% block title %}Synchronisation - Facturier{% endblock %}
+{% block content %}
+<h1 style="font-size:18px; margin-bottom:16px;">🔄 Synchronisation vers le cloud</h1>
+
+{% if not cloud_url %}
+  <div class="alert alert-warning">
+    Aucun serveur en ligne configuré (CLOUD_SYNC_URL absent). Cette instance ne synchronise rien.
+  </div>
+{% else %}
+  <div class="card mb-4">
+    <p><strong>Serveur cible :</strong> {{ cloud_url }}</p>
+    <p><strong>Fréquence automatique :</strong> toutes les {{ sync_interval }} minutes</p>
+  </div>
+
+  <form method="post" class="mb-4">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="sync_now">
+    <button type="submit" class="btn btn-primary">Synchroniser maintenant</button>
+  </form>
+
+  <div class="card">
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Type de donnée</th><th>Dernière synchronisation réussie</th></tr></thead>
+      <tbody>
+        {% for s in states %}
+        <tr>
+          <td>{{ s.key }}</td>
+          <td>{% if s.last_synced_at %}{{ s.last_synced_at|date:"d/m/Y H:i:s" }}{% else %}Jamais{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="2" class="text-muted" style="text-align:center;">Aucune synchronisation effectuée pour le moment.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

@@ -1,6 +1,14 @@
 import uuid
 from django.core.paginator import Paginator
 
+import json
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+
+from facturier_mvt import settings
+from .models import SaleItem, SalePayment, SyncState
+from .sync_client import push_to_cloud
+
 from datetime import date, datetime, time, timedelta
 
 from django.db import transaction
@@ -856,6 +864,7 @@ def _handle_validate_sale(request, company, cart, cash_session):
                 client_phone=request.POST.get("client_phone") or None,
                 notes=request.POST.get("notes") or None,
                 seller=request.user,
+                seller_name=request.user.full_name,
             )
 
             for line, product, line_discount in resolved:
@@ -1351,3 +1360,94 @@ def approvisionnements_list_view(request):
         "company": company, "entries": entries, "query": query,
         "start_date": start_date or "", "end_date": end_date or "", "total_cost": total_cost,
     })
+
+
+
+@csrf_exempt
+def sync_receive_view(request):
+    """Reçoit les données envoyées par l'instance locale (clinique) et les
+    intègre dans la base du serveur en ligne. Protégé par un jeton partagé
+    (X-Sync-Token). Ne reçoit jamais de mots de passe ni de comptes."""
+    if request.method != "POST":
+        return JsonResponse({"message": "Méthode non autorisée."}, status=405)
+
+    token = request.headers.get("X-Sync-Token")
+    if not settings.SYNC_TOKEN or token != settings.SYNC_TOKEN:
+        return JsonResponse({"message": "Jeton de synchronisation invalide."}, status=403)
+
+    try:
+        payload = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"message": "JSON invalide."}, status=400)
+
+    for c in payload.get("companies", []):
+        Company.objects.update_or_create(id=c["id"], defaults={
+            "name": c["name"], "address": c.get("address"), "phone": c.get("phone"),
+            "email": c.get("email"), "website": c.get("website"), "tva_rate": c.get("tva_rate", 18),
+        })
+
+    for p in payload.get("products", []):
+        Product.objects.update_or_create(id=p["id"], defaults={
+            "company_id": p["company_id"], "name": p["name"], "description": p.get("description"),
+            "price": p["price"], "stock": p["stock"], "critical_threshold": p.get("critical_threshold", 5),
+        })
+
+    for s in payload.get("services", []):
+        Service.objects.update_or_create(id=s["id"], defaults={
+            "company_id": s["company_id"], "name": s["name"], "description": s.get("description"),
+            "default_price": s["default_price"], "is_active": s.get("is_active", True),
+        })
+
+    for d in payload.get("depenses", []):
+        Depense.objects.update_or_create(id=d["id"], defaults={
+            "company_id": d["company_id"], "date": d["date"], "type_depense": d["type_depense"],
+            "label": d["label"], "amount": d["amount"], "comment": d.get("comment"),
+        })
+
+    for a in payload.get("approvisionnements", []):
+        Approvisionnement.objects.update_or_create(id=a["id"], defaults={
+            "company_id": a["company_id"], "product_id": a["product_id"], "quantity": a["quantity"],
+            "unit_cost": a.get("unit_cost"), "date": a["date"], "comment": a.get("comment"),
+        })
+
+    for s in payload.get("sales", []):
+        sale, _ = Sale.objects.update_or_create(id=s["id"], defaults={
+            "company_id": s["company_id"], "client_name": s.get("client_name"),
+            "client_phone": s.get("client_phone"), "notes": s.get("notes"),
+            "sale_type": s.get("sale_type", "PRODUCT"),
+            "discount_type": s.get("discount_type", "NONE"), "discount_value": s.get("discount_value", 0),
+            "discount_amount": s.get("discount_amount", 0), "sub_total": s["sub_total"],
+            "tva_amount": s["tva_amount"], "total": s["total"],
+            "seller": None, "seller_name": s.get("seller_name", ""),
+        })
+        sale.items.all().delete()
+        for item in s.get("items", []):
+            SaleItem.objects.create(
+                sale=sale, product_id=item.get("product_id"), service_id=item.get("service_id"),
+                label=item.get("label", ""), quantity=item["quantity"], price=item["price"],
+                is_gift=item.get("is_gift", False), discount_amount=item.get("discount_amount", 0),
+            )
+        sale.payments.all().delete()
+        for payment in s.get("payments", []):
+            SalePayment.objects.create(sale=sale, method=payment["method"], amount=payment["amount"])
+
+    return JsonResponse({"message": "Synchronisation reçue avec succès."})
+
+
+@admin_required
+def sync_status_view(request):
+    """Page admin (côté local) : statut et déclenchement manuel de la
+    synchronisation vers le serveur en ligne."""
+    if request.method == "POST" and request.POST.get("action") == "sync_now":
+        success, message = push_to_cloud()
+        if success:
+            messages.success(request, message)
+        else:
+            messages.error(request, message)
+        return redirect("sync_status")
+
+    states = SyncState.objects.all().order_by("key")
+    return render(request, "core/sync_status.html", {
+        "states": states, "cloud_url": settings.CLOUD_SYNC_URL, "sync_interval": settings.SYNC_INTERVAL_MINUTES,
+    })
+

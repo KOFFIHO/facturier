@@ -93,3 +93,12 @@ LOGIN_REDIRECT_URL = "caisse"
 LOGOUT_REDIRECT_URL = "login"
 
 MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024  # 5 Mo, pour le logo/cachet et l'import Excel
+
+
+# --- Synchronisation vers un serveur en ligne (cloud) ---
+# Sur l'instance LOCALE (clinique) : renseigne CLOUD_SYNC_URL + SYNC_TOKEN.
+# Sur l'instance CLOUD (en ligne) : laisse CLOUD_SYNC_URL vide, renseigne
+# seulement SYNC_TOKEN (le même secret des deux côtés).
+CLOUD_SYNC_URL = os.getenv("CLOUD_SYNC_URL", "")
+SYNC_TOKEN = os.getenv("SYNC_TOKEN", "")
+SYNC_INTERVAL_MINUTES = int(os.getenv("SYNC_INTERVAL_MINUTES", "5"))
