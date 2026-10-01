@@ -61,7 +61,7 @@ urlpatterns = [
     path("produits/<uuid:product_id>/approvisionner/", views.product_restock_view, name="product_restock"),
     path("approvisionnements/", views.approvisionnements_list_view, name="approvisionnements_list"),
 
-
+    # Synchronisation 
     path("api/sync/receive/", views.sync_receive_view, name="sync_receive"),
     path("synchronisation/", views.sync_status_view, name="sync_status"),
 ]

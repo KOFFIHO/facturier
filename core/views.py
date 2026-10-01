@@ -1362,7 +1362,6 @@ def approvisionnements_list_view(request):
     })
 
 
-
 @csrf_exempt
 def sync_receive_view(request):
     """Reçoit les données envoyées par l'instance locale (clinique) et les
@@ -1450,4 +1449,3 @@ def sync_status_view(request):
     return render(request, "core/sync_status.html", {
         "states": states, "cloud_url": settings.CLOUD_SYNC_URL, "sync_interval": settings.SYNC_INTERVAL_MINUTES,
     })
-
