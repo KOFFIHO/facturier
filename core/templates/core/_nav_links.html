@@ -11,9 +11,9 @@
   <li class="nav-item"><a href="{% url 'services_list' %}" class="nav-link {% if active == 'services_list' or active == 'service_edit' %}active{% endif %}"><i class="bi bi-heart-pulse"></i> Prestations</a></li>
   <li class="nav-item"><a href="{% url 'companies_list' %}" class="nav-link {% if active == 'companies_list' or active == 'company_edit' %}active{% endif %}"><i class="bi bi-building"></i> Entreprises</a></li>
   <li class="nav-item"><a href="{% url 'users_list' %}" class="nav-link {% if active == 'users_list' %}active{% endif %}"><i class="bi bi-people"></i> Utilisateurs</a></li>
-  <li class="nav-item"><a href="{% url 'sales_history' %}" class="nav-link {% if active == 'sales_history' %}active{% endif %}"><i class="bi bi-clock-history"></i> Historique</a></li>
-  <li class="nav-item"><a href="{% url 'sync_status' %}" class="nav-link {% if active == 'sync_status' %}active{% endif %}"><i class="bi bi-arrow-repeat"></i> Synchro</a></li>
   <li class="nav-item"><a href="{% url 'employees_list' %}" class="nav-link {% if active == 'employees_list' %}active{% endif %}"><i class="bi bi-person-badge"></i> Employés</a></li>
+  <li class="nav-item"><a href="{% url 'sync_status' %}" class="nav-link {% if active == 'sync_status' %}active{% endif %}"><i class="bi bi-arrow-repeat"></i> Synchro</a></li>
+  <li class="nav-item"><a href="{% url 'sales_history' %}" class="nav-link {% if active == 'sales_history' %}active{% endif %}"><i class="bi bi-clock-history"></i> Historique</a></li>
 {% endif %}
 <li class="nav-item"><a href="{% url 'caisse' %}" class="nav-link {% if active == 'caisse' %}active{% endif %}"><i class="bi bi-cart3"></i> Caisse</a></li>
 {% if user.role == "SELLER" %}

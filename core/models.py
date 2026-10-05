@@ -284,6 +284,7 @@ class Employee(models.Model):
     phone = models.CharField(max_length=30, null=True, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "employees"
@@ -307,6 +308,8 @@ class Depense(models.Model):
     amount = models.FloatField()
     comment = models.CharField(max_length=255, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
 
     class Meta:
         db_table = "depenses"
