@@ -5,7 +5,8 @@ from django.core.validators import RegexValidator
 from datetime import date, timedelta
 from django.db.models import Sum
 
-from .models import CashSession, Company, Depense, DiscountType, PaymentMethod, Product, Service, User
+from .models import CashSession, Company, Depense, DiscountType, Employee, PaymentMethod, Product, Service, User
+
 
 _phone_validator = RegexValidator(
     regex=r"^\d{10}$",
@@ -28,13 +29,32 @@ def phone_number_field(label="Numéro de téléphone"):
     )
 
 
-class LoginForm(forms.Form):
+class BootstrapFormMixin:
+    """Ajoute automatiquement les classes Bootstrap (form-control,
+    form-select, form-check-input) à chaque champ, sans retoucher chaque
+    formulaire un par un."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            widget = field.widget
+            existing = widget.attrs.get("class", "")
+            if isinstance(widget, forms.Select):
+                widget.attrs["class"] = (existing + " form-select").strip()
+            elif isinstance(widget, forms.CheckboxInput):
+                widget.attrs["class"] = (existing + " form-check-input").strip()
+            else:
+                widget.attrs["class"] = (existing + " form-control").strip()
+
+
+
+class LoginForm(BootstrapFormMixin, forms.Form):
     phone_number = phone_number_field()
     #phone_number = forms.CharField(label="Numéro de téléphone")
     password = forms.CharField(label="Mot de passe", widget=forms.PasswordInput)
 
 
-class ResetPasswordForm(forms.Form):
+class ResetPasswordForm(BootstrapFormMixin, forms.Form):
     """Réinitialisation en libre-service pour un VENDEUR : identité vérifiée
     uniquement par téléphone + entreprise (pas d'email/SMS)."""
 
@@ -51,7 +71,7 @@ class ResetPasswordForm(forms.Form):
         return cleaned
 
 
-class CompanyForm(forms.ModelForm):
+class CompanyForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Company
         fields = ["name", "address", "phone", "email", "website", "tva_rate"]
@@ -68,19 +88,19 @@ class CompanyForm(forms.ModelForm):
         }
 
 
-class CompanyLogoForm(forms.ModelForm):
+class CompanyLogoForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Company
         fields = ["logo"]
 
 
-class CompanyStampForm(forms.ModelForm):
+class CompanyStampForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Company
         fields = ["stamp"]
 
 
-class CreateUserForm(forms.Form):
+class CreateUserForm(BootstrapFormMixin, forms.Form):
     """Création d'un vendeur ou d'un administrateur par l'ADMIN."""
 
     full_name = forms.CharField(label="Nom complet", min_length=2)
@@ -105,7 +125,7 @@ class CreateUserForm(forms.Form):
         return cleaned
 
 
-class ProductForm(forms.ModelForm):
+class ProductForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Product
         fields = ["name", "description", "price", "stock", "critical_threshold"]
@@ -130,7 +150,7 @@ class ProductForm(forms.ModelForm):
         return stock
 
 
-class ProductImportForm(forms.Form):
+class ProductImportForm(BootstrapFormMixin, forms.Form):
     """Import en masse de produits depuis un fichier Excel (.xlsx)."""
 
     file = forms.FileField(label="Fichier Excel (.xlsx)")
@@ -142,7 +162,7 @@ class ProductImportForm(forms.Form):
         return f
 
 
-class CashSessionOpenForm(forms.Form):
+class CashSessionOpenForm(BootstrapFormMixin, forms.Form):
     planned_closed_at = forms.DateTimeField(
         label="Date/Heure Fermeture",
         widget=forms.DateTimeInput(attrs={"type": "datetime-local"}),
@@ -150,7 +170,7 @@ class CashSessionOpenForm(forms.Form):
     )
 
 
-class CashSessionExtendForm(forms.Form):
+class CashSessionExtendForm(BootstrapFormMixin, forms.Form):
     planned_closed_at = forms.DateTimeField(
         label="Nouvelle Date/Heure Fermeture",
         widget=forms.DateTimeInput(attrs={"type": "datetime-local"}),
@@ -158,7 +178,7 @@ class CashSessionExtendForm(forms.Form):
     )
 
 
-class AddToCartForm(forms.Form):
+class AddToCartForm(BootstrapFormMixin, forms.Form):
     """Ajout d'un produit au panier (Caisse) : une ligne de ce formulaire par produit affiché."""
 
     product_id = forms.CharField(widget=forms.HiddenInput)
@@ -166,7 +186,7 @@ class AddToCartForm(forms.Form):
     is_gift = forms.BooleanField(required=False, label="Offert")
 
 
-class ValidateSaleForm(forms.Form):
+class ValidateSaleForm(BootstrapFormMixin, forms.Form):
     """Informations complémentaires saisies au moment de valider la vente."""
 
     client_name = forms.CharField(label="Nom du client", required=True )
@@ -176,7 +196,7 @@ class ValidateSaleForm(forms.Form):
     discount_value = forms.FloatField(label="Valeur de la réduction", required=False, min_value=0)
 
 
-class ServiceForm(forms.ModelForm):
+class ServiceForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Service
         fields = ["name", "description", "default_price", "is_active"]
@@ -199,13 +219,20 @@ class ServiceForm(forms.ModelForm):
         return price
 
 
-class DepenseForm(forms.ModelForm):
+class EmployeeForm(BootstrapFormMixin, forms.Form):
+    full_name = forms.CharField(label="Nom complet", min_length=2)
+    role = forms.ChoiceField(label="Rôle", choices=Employee.Role.choices)
+    phone = forms.CharField(label="Téléphone (optionnel)", required=False)
+
+
+
+class DepenseForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Depense
-        fields = ["date", "type_depense", "label", "amount", "comment"]
+        fields = ["date", "type_depense", "label", "amount", "employee", "comment"]
         labels = {
             "date": "Date", "type_depense": "Type de dépense", "label": "Libellé",
-            "amount": "Montant (F CFA)", "comment": "Commentaire",
+            "amount": "Montant (F CFA)", "employee": "Demandée par", "comment": "Commentaire",
         }
         widgets = {
             "date": forms.DateInput(attrs={"type": "date"}),
@@ -215,6 +242,11 @@ class DepenseForm(forms.ModelForm):
             "comment": forms.TextInput(attrs={"placeholder": "Optionnel"}),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["employee"].required = False
+        self.fields["employee"].empty_label = "— Non renseigné —"
+
     def clean_amount(self):
         amount = self.cleaned_data["amount"]
         if amount <= 0:
@@ -222,7 +254,8 @@ class DepenseForm(forms.ModelForm):
         return amount
 
 
-class ApprovisionnementForm(forms.Form):
+
+class ApprovisionnementForm(BootstrapFormMixin, forms.Form):
     quantity = forms.IntegerField(label="Quantité ajoutée", min_value=1)
     unit_cost = forms.FloatField(label="Prix d'achat unitaire (F CFA, optionnel)", required=False, min_value=0)
     date = forms.DateField(label="Date", widget=forms.DateInput(attrs={"type": "date"}))

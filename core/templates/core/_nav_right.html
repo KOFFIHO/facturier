@@ -1,13 +1,18 @@
 {% if user.role == "ADMIN" and companies %}
-  <form method="post" action="{% url 'switch_company' %}">
+  <form method="post" action="{% url 'switch_company' %}" class="mb-0">
     {% csrf_token %}
     <input type="hidden" name="next" value="{{ request.path }}">
-    <select name="company_id" class="company-select" onchange="this.form.submit()">
+    <select name="company_id" class="form-select form-select-sm bg-dark text-white border-secondary" onchange="this.form.submit()">
       {% for c in companies %}
         <option value="{{ c.id }}" {% if active_company and c.id == active_company.id %}selected{% endif %}>{{ c.name }}</option>
       {% endfor %}
     </select>
   </form>
 {% endif %}
-<span class="navbar-user">{{ user.full_name }} ({% if user.role == "ADMIN" %}Administrateur{% else %}Vendeur{% endif %})</span>
-<a href="{% url 'logout' %}" class="navbar-logout">↪ Déconnexion</a>
+
+<button type="button" id="theme-toggle" class="btn btn-sm btn-outline-light" title="Basculer clair/sombre">
+  <i class="bi bi-moon-stars"></i>
+</button>
+
+<span class="text-light small">{{ user.full_name }} <span class="text-secondary">({% if user.role == "ADMIN" %}Administrateur{% else %}Vendeur{% endif %})</span></span>
+<a href="{% url 'logout' %}" class="btn btn-sm btn-outline-danger"><i class="bi bi-box-arrow-right"></i> Déconnexion</a>

@@ -1,64 +1,349 @@
 {% extends "core/base.html" %}
+
 {% block title %}Historique - Facturier{% endblock %}
+
 {% block content %}
-<h1 style="font-size:18px;">🕘 {% if is_admin %}Historique des paiements{% else %}Mon historique de ventes{% endif %}</h1>
 
-{% if not company %}
-  <div class="alert alert-warning">Créez d'abord une entreprise (page « Entreprises ») pour consulter son historique.</div>
-{% else %}
+<div class="container-fluid">
 
-<div class="card mb-4">
-  <form method="get" class="flex gap-2" style="align-items:flex-end; flex-wrap:wrap;">
-    <div class="field" style="margin:0;"><label>Du</label><input type="date" name="start_date" value="{{ start_date }}"></div>
-    <div class="field" style="margin:0;"><label>Au</label><input type="date" name="end_date" value="{{ end_date }}"></div>
-    <div class="field" style="margin:0; min-width:200px;">
-      <label>Produit</label>
-      <select name="product_id">
-        <option value="">Tous les produits</option>
-        {% for p in products %}
-        <option value="{{ p.id }}" {% if product_id == p.id|stringformat:"s" %}selected{% endif %}>{{ p.name }}</option>
-        {% endfor %}
-      </select>
+  <!-- Titre -->
+  <h1 class="h5 mb-4">
+    🕘
+    {% if is_admin %}
+      Historique des paiements
+    {% else %}
+      Mon historique de ventes
+    {% endif %}
+  </h1>
+
+
+  {% if not company %}
+
+    <div class="alert alert-warning">
+      Créez d'abord une entreprise
+      (page « Entreprises »)
+      pour consulter son historique.
     </div>
-    <button type="submit" class="btn btn-primary">Filtrer</button>
-    <a href="?today=1" class="btn btn-outline">📅 Aujourd'hui</a>
-    <a href="{% url 'sales_history' %}" class="btn btn-outline">✕ Réinitialiser</a>
-  </form>
+
+  {% else %}
+
+
+    <!-- Filtres -->
+    <div class="card shadow-sm mb-4">
+
+      <div class="card-body">
+
+        <form method="get">
+
+          <div class="row g-3 align-items-end">
+
+            <!-- Date début -->
+            <div class="col-12 col-sm-6 col-lg-2">
+
+              <label for="start_date" class="form-label">
+                Du
+              </label>
+
+              <input
+                type="date"
+                id="start_date"
+                name="start_date"
+                value="{{ start_date }}"
+                class="form-control"
+              >
+
+            </div>
+
+
+            <!-- Date fin -->
+            <div class="col-12 col-sm-6 col-lg-2">
+
+              <label for="end_date" class="form-label">
+                Au
+              </label>
+
+              <input
+                type="date"
+                id="end_date"
+                name="end_date"
+                value="{{ end_date }}"
+                class="form-control"
+              >
+
+            </div>
+
+
+            <!-- Produit -->
+            <div class="col-12 col-sm-8 col-lg-3">
+
+              <label for="product_id" class="form-label">
+                Produit
+              </label>
+
+              <select
+                name="product_id"
+                id="product_id"
+                class="form-select"
+              >
+
+                <option value="">
+                  Tous les produits
+                </option>
+
+                {% for p in products %}
+
+                  <option
+                    value="{{ p.id }}"
+                    {% if product_id == p.id|stringformat:"s" %}
+                      selected
+                    {% endif %}
+                  >
+                    {{ p.name }}
+                  </option>
+
+                {% endfor %}
+
+              </select>
+
+            </div>
+
+
+            <!-- Filtrer -->
+            <div class="col-12 col-sm-4 col-lg-auto">
+
+              <button
+                type="submit"
+                class="btn btn-primary w-100"
+              >
+                Filtrer
+              </button>
+
+            </div>
+
+
+            <!-- Aujourd'hui -->
+            <div class="col-12 col-sm-6 col-lg-auto">
+
+              <a
+                href="?today=1"
+                class="btn btn-outline-secondary w-100"
+              >
+                📅 Aujourd'hui
+              </a>
+
+            </div>
+
+
+            <!-- Réinitialiser -->
+            <div class="col-12 col-sm-6 col-lg-auto">
+
+              <a
+                href="{% url 'sales_history' %}"
+                class="btn btn-outline-secondary w-100"
+              >
+                ✕ Réinitialiser
+              </a>
+
+            </div>
+
+          </div>
+
+        </form>
+
+      </div>
+
+    </div>
+
+
+    <!-- Résumé -->
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mb-3">
+
+      <p class="text-muted mb-0">
+        {{ sales|length }} vente(s) trouvée(s)
+      </p>
+
+      <p class="fw-semibold mb-0">
+        Total période :
+        {{ total_periode|floatformat:0 }} F CFA
+      </p>
+
+    </div>
+
+
+    <!-- Tableau -->
+    <div class="card shadow-sm">
+
+      <div class="card-body p-0">
+
+        <div class="table-responsive">
+
+          <table class="table table-hover align-middle mb-0">
+
+            <thead>
+
+              <tr>
+
+                <th>N° Facture</th>
+
+                <th>Date</th>
+
+                <th>Client</th>
+
+                {% if is_admin %}
+                  <th>Vendeur</th>
+                {% endif %}
+
+                <th>Produits</th>
+
+                <th>Paiement</th>
+
+                <th>Total</th>
+
+                <th class="text-end">
+                  Facture
+                </th>
+
+              </tr>
+
+            </thead>
+
+
+            <tbody>
+
+              {% for sale in sales %}
+
+                <tr>
+
+                  <!-- Facture -->
+                  <td>
+                    {{ sale.invoice_code }}
+                  </td>
+
+
+                  <!-- Date -->
+                  <td>
+
+                    <div>
+                      {{ sale.created_at|date:"d/m/Y" }}
+                    </div>
+
+                    <small class="text-muted">
+                      {{ sale.created_at|date:"H:i" }}
+                    </small>
+
+                  </td>
+
+
+                  <!-- Client -->
+                  <td>
+                    {{ sale.client_name|default:"Client comptoir" }}
+                  </td>
+
+
+                  <!-- Vendeur -->
+                  {% if is_admin %}
+                    <td>
+                      {{ sale.seller_name }}
+                    </td>
+                  {% endif %}
+
+
+                  <!-- Produits -->
+                  <td>
+
+                    {% for item in sale.items.all %}
+
+                      {{ item.designation }}
+
+                      {% if not forloop.last %}
+                        ,
+                      {% endif %}
+
+                    {% empty %}
+
+                      <span class="text-muted">
+                        —
+                      </span>
+
+                    {% endfor %}
+
+                  </td>
+
+
+                  <!-- Paiement -->
+                  <td>
+
+                    {% for p in sale.payments.all %}
+
+                      {{ p.get_method_display }}
+
+                      {% if not forloop.last %}
+                        +
+                      {% endif %}
+
+                    {% empty %}
+
+                      <span class="text-muted">
+                        —
+                      </span>
+
+                    {% endfor %}
+
+                  </td>
+
+
+                  <!-- Total -->
+                  <td class="fw-semibold text-nowrap">
+
+                    {{ sale.total|floatformat:0 }} F CFA
+
+                  </td>
+
+
+                  <!-- Facture -->
+                  <td class="text-end">
+
+                    <a
+                      href="{% url 'invoice' sale.id %}"
+                      class="btn btn-outline-secondary btn-sm"
+                    >
+                      Voir
+                    </a>
+
+                  </td>
+
+                </tr>
+
+
+              {% empty %}
+
+                <tr>
+
+                  <td
+                    colspan="{% if is_admin %}8{% else %}7{% endif %}"
+                    class="text-center text-muted py-4"
+                  >
+                    Aucune vente trouvée pour ces critères.
+                  </td>
+
+                </tr>
+
+              {% endfor %}
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+  {% endif %}
+
 </div>
 
-<div class="flex-between mb-2">
-  <p class="text-muted">{{ sales|length }} vente(s) trouvée(s)</p>
-  <p style="font-weight:600;">Total période : {{ total_periode|floatformat:0 }} F CFA</p>
-</div>
-
-<div class="card">
-  <div class="table-wrap">
-  <table>
-    <thead>
-      <tr>
-        <th>N° Facture</th><th>Date</th><th>Client</th>
-        {% if is_admin %}<th>Vendeur</th>{% endif %}
-        <th>Produits</th><th>Paiement</th><th>Total</th><th class="text-right">Facture</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for sale in sales %}
-      <tr>
-        <td>{{ sale.invoice_code }}</td>
-        <td>{{ sale.created_at|date:"d/m/Y" }} <span class="text-muted">{{ sale.created_at|date:"H:i" }}</span></td>
-        <td>{{ sale.client_name|default:"Client comptoir" }}</td>
-        {% if is_admin %}<td>{{ sale.seller_name }}</td>{% endif %}
-        <td>{% for item in sale.items.all %}{{ item.designation }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
-        <td>{% for p in sale.payments.all %}{{ p.get_method_display }}{% if not forloop.last %} + {% endif %}{% endfor %}</td>
-        <td style="font-weight:600;">{{ sale.total|floatformat:0 }} F CFA</td>
-        <td class="text-right"><a href="{% url 'invoice' sale.id %}" class="btn btn-outline btn-sm">Voir</a></td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="{% if is_admin %}8{% else %}7{% endif %}" style="text-align:center;" class="text-muted">Aucune vente trouvée pour ces critères.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-</div>
-{% endif %}
 {% endblock %}
+

@@ -1,40 +1,188 @@
 {% extends "core/base.html" %}
+
 {% block title %}Synchronisation - Facturier{% endblock %}
+
 {% block content %}
-<h1 style="font-size:18px; margin-bottom:16px;">🔄 Synchronisation vers le cloud</h1>
 
-{% if not cloud_url %}
-  <div class="alert alert-warning">
-    Aucun serveur en ligne configuré (CLOUD_SYNC_URL absent). Cette instance ne synchronise rien.
-  </div>
-{% else %}
-  <div class="card mb-4">
-    <p><strong>Serveur cible :</strong> {{ cloud_url }}</p>
-    <p><strong>Fréquence automatique :</strong> toutes les {{ sync_interval }} minutes</p>
-  </div>
+<div class="container-fluid">
 
-  <form method="post" class="mb-4">
-    {% csrf_token %}
-    <input type="hidden" name="action" value="sync_now">
-    <button type="submit" class="btn btn-primary">Synchroniser maintenant</button>
-  </form>
+  <!-- Titre -->
+  <h1 class="h5 mb-4">
+    🔄 Synchronisation vers le cloud
+  </h1>
 
-  <div class="card">
-    <div class="table-wrap">
-    <table>
-      <thead><tr><th>Type de donnée</th><th>Dernière synchronisation réussie</th></tr></thead>
-      <tbody>
-        {% for s in states %}
-        <tr>
-          <td>{{ s.key }}</td>
-          <td>{% if s.last_synced_at %}{{ s.last_synced_at|date:"d/m/Y H:i:s" }}{% else %}Jamais{% endif %}</td>
-        </tr>
-        {% empty %}
-        <tr><td colspan="2" class="text-muted" style="text-align:center;">Aucune synchronisation effectuée pour le moment.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+
+  {% if not cloud_url %}
+
+    <!-- Aucun serveur configuré -->
+    <div class="alert alert-warning">
+      <strong>Aucun serveur en ligne configuré.</strong>
+      <br>
+      <span class="small">
+        CLOUD_SYNC_URL absent. Cette instance ne synchronise rien.
+      </span>
     </div>
-  </div>
-{% endif %}
+
+  {% else %}
+
+
+    <!-- Informations de synchronisation -->
+    <div class="card shadow-sm mb-4">
+
+      <div class="card-body">
+
+        <h2 class="h6 mb-3">
+          Configuration
+        </h2>
+
+        <div class="row g-3">
+
+          <div class="col-12 col-md-6">
+
+            <div class="border rounded p-3 h-100">
+
+              <div class="text-muted small mb-1">
+                Serveur cible
+              </div>
+
+              <div class="fw-semibold text-break">
+                {{ cloud_url }}
+              </div>
+
+            </div>
+
+          </div>
+
+
+          <div class="col-12 col-md-6">
+
+            <div class="border rounded p-3 h-100">
+
+              <div class="text-muted small mb-1">
+                Fréquence automatique
+              </div>
+
+              <div class="fw-semibold">
+                Toutes les {{ sync_interval }} minutes
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <!-- Synchronisation manuelle -->
+    <div class="mb-4">
+
+      <form method="post">
+
+        {% csrf_token %}
+
+        <input
+          type="hidden"
+          name="action"
+          value="sync_now"
+        >
+
+        <button
+          type="submit"
+          class="btn btn-primary"
+        >
+          🔄 Synchroniser maintenant
+        </button>
+
+      </form>
+
+    </div>
+
+
+    <!-- Historique des synchronisations -->
+    <div class="card shadow-sm">
+
+      <div class="card-body">
+
+        <h2 class="h6 mb-3">
+          État des synchronisations
+        </h2>
+
+        <div class="table-responsive">
+
+          <table class="table table-hover align-middle mb-0">
+
+            <thead>
+
+              <tr>
+                <th>Type de donnée</th>
+                <th>Dernière synchronisation réussie</th>
+              </tr>
+
+            </thead>
+
+
+            <tbody>
+
+              {% for s in states %}
+
+                <tr>
+
+                  <td>
+                    {{ s.key }}
+                  </td>
+
+                  <td>
+
+                    {% if s.last_synced_at %}
+
+                      {{ s.last_synced_at|date:"d/m/Y H:i:s" }}
+
+                    {% else %}
+
+                      <span class="text-muted">
+                        Jamais
+                      </span>
+
+                    {% endif %}
+
+                  </td>
+
+                </tr>
+
+
+              {% empty %}
+
+                <tr>
+
+                  <td
+                    colspan="2"
+                    class="text-center text-muted py-4"
+                  >
+                    Aucune synchronisation effectuée
+                    pour le moment.
+                  </td>
+
+                </tr>
+
+              {% endfor %}
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+  {% endif %}
+
+</div>
+
 {% endblock %}

@@ -64,4 +64,8 @@ urlpatterns = [
     # Synchronisation 
     path("api/sync/receive/", views.sync_receive_view, name="sync_receive"),
     path("synchronisation/", views.sync_status_view, name="sync_status"),
+    
+    #Employers
+    path("employes/", views.employees_list_view, name="employees_list"),
+    path("employes/<uuid:employee_id>/desactiver/", views.employee_deactivate_view, name="employee_deactivate"),
 ]

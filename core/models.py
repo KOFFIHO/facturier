@@ -268,6 +268,32 @@ class SaleItem(models.Model):
         return self.label or "Prestation"
 
 
+
+class Employee(models.Model):
+    """Membre du personnel pouvant être lié à une dépense, SANS avoir
+    nécessairement de compte de connexion (contrairement à User)."""
+
+    class Role(models.TextChoices):
+        EMPLOYEE = "EMPLOYEE", "Employé"
+        GERANT = "GERANT", "Gérant"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="employees")
+    full_name = models.CharField(max_length=150)
+    role = models.CharField(max_length=10, choices=Role.choices, default=Role.EMPLOYEE)
+    phone = models.CharField(max_length=30, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "employees"
+        ordering = ["full_name"]
+
+    def __str__(self):
+        return f"{self.full_name} ({self.get_role_display()})"
+
+
+
 class Depense(models.Model):
     """Dépense de l'entreprise (achats, factures, charges...), utilisée pour
     calculer le bénéfice (CA - dépenses) sur le tableau de bord."""
@@ -277,6 +303,7 @@ class Depense(models.Model):
     date = models.DateField()
     type_depense = models.CharField(max_length=100)
     label = models.CharField(max_length=200)
+    employee = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True, related_name="depenses")
     amount = models.FloatField()
     comment = models.CharField(max_length=255, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

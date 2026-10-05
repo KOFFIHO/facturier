@@ -10,7 +10,8 @@
   </div>
 </div>
 
-<div class="invoice-box">
+<!-- On force data-bs-theme="light" pour que le texte reste sombre et lisible en mode dark -->
+<div class="invoice-box" data-bs-theme="light" style="background-color: #ffffff; color: #212529;">
   <div class="invoice-header" style="justify-content:flex-end;">
     <div class="invoice-logo">
       {% if company.logo %}<img src="{{ company.logo.url }}" alt="Logo" onerror="this.replaceWith(Object.assign(document.createElement('span'), {style:'font-size:7px;color:#b91c1c;text-align:center;', textContent:'Logo introuvable'}));">{% else %}<span style="font-size:7px; font-style:italic; text-align:center;">Votre logo ici</span>{% endif %}
@@ -25,8 +26,12 @@
   </div>
 
   <div class="invoice-meta">
-    <span><strong>N° Facture :</strong> {{ sale.invoice_code }}</span>
-    <span><strong>Date :</strong> {{ sale.created_at|date:"d/m/Y" }} à {{ sale.created_at|date:"H:i" }}</span>
+      <span><strong>N° Facture :</strong> {{ sale.invoice_code }}</span>
+      <span><strong>Date :</strong> {{ sale.created_at|date:"d/m/Y" }}</span>
+  </div>
+  <div class="invoice-meta">
+      <span><strong>Vendeur :</strong> {{ sale.seller_name|default:"—" }}</span>
+      <span></span>
   </div>
 
   <p style="font-size:10px; font-weight:700; margin:0 0 4px;">CLIENT</p>
@@ -56,16 +61,29 @@
     </tbody>
   </table>
 
-  <div class="invoice-totals">
-    <div class="row"><span>Sous-total</span><span>{{ sale.sub_total|floatformat:0 }} F CFA</span></div>
+  <!-- Section Totaux avec alignement forcé et textes garantis sombres -->
+  <div style="font-size: 11px; margin-bottom: 12px; width: 100%;">
+    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 3px 0;">
+      <span>Sous-total</span>
+      <span>{{ sale.sub_total|floatformat:0 }} F CFA</span>
+    </div>
+
     {% if sale.discount_amount > 0 %}
-    <div class="row" style="color:var(--red-600);">
+    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 3px 0; color: #dc2626;">
       <span>Réduction{% if sale.discount_type == "PERCENTAGE" %} ({{ sale.discount_value|floatformat:0 }}%){% endif %}</span>
       <span>- {{ sale.discount_amount|floatformat:0 }} F CFA</span>
     </div>
     {% endif %}
-    <div class="row"><span>TVA ({{ company.tva_rate|floatformat:0 }}%)</span><span>{{ sale.tva_amount|floatformat:0 }} F CFA</span></div>
-    <div class="row total"><span>Total</span><span>{{ sale.total|floatformat:0 }} F CFA</span></div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 3px 0;">
+      <span>TVA ({{ company.tva_rate|floatformat:0 }}%)</span>
+      <span>{{ sale.tva_amount|floatformat:0 }} F CFA</span>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding-top: 5px; margin-top: 3px; border-top: 1px solid #e5e7eb; font-weight: 700; font-size: 14px;">
+      <span>Total</span>
+      <span>{{ sale.total|floatformat:0 }} F CFA</span>
+    </div>
   </div>
 
   <div style="font-size:10px; margin-bottom:12px;">

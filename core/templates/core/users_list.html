@@ -1,82 +1,317 @@
 {% extends "core/base.html" %}
+
 {% block title %}Vendeurs - Facturier{% endblock %}
+
 {% block content %}
-<div class="flex-between mb-4">
-  <h1 style="font-size:18px; margin:0;">Gestion des vendeurs</h1>
-</div>
 
-<div class="card mb-4">
-  <h2 style="font-size:15px; margin-top:0;">Nouveau compte</h2>
-  {% if companies|length == 0 %}
-    <div class="alert alert-warning">Créez d'abord une entreprise avant d'ajouter un vendeur.</div>
-  {% endif %}
-  <form method="post">
-    {% csrf_token %}
-    <div class="field-row">
-      <div class="field">
-        <label>Nom complet</label>{{ form.full_name }}
-        {% if form.full_name.errors %}<ul class="errorlist">{{ form.full_name.errors }}</ul>{% endif %}
-      </div>
-      <div class="field">
-        <label>Téléphone (identifiant, 10 chiffres)</label>{{ form.phone_number }}
-        {% if form.phone_number.errors %}<ul class="errorlist">{{ form.phone_number.errors }}</ul>{% endif %}
-      </div>
-    </div>
-    <div class="field-row">
-      <div class="field">
-        <label>Mot de passe</label>{{ form.password }}
-        {% if form.password.errors %}<ul class="errorlist">{{ form.password.errors }}</ul>{% endif %}
-      </div>
-      <div class="field">
-        <label>Confirmer</label>{{ form.confirm_password }}
-        {% if form.confirm_password.errors %}<ul class="errorlist">{{ form.confirm_password.errors }}</ul>{% endif %}
-      </div>
-    </div>
-    <div class="field-row">
-      <div class="field"><label>Rôle</label>{{ form.role }}</div>
-      <div class="field">
-        <label>Entreprise</label>{{ form.company }}
-        {% if form.company.errors %}<ul class="errorlist">{{ form.company.errors }}</ul>{% endif %}
-      </div>
-    </div>
-    {% if form.non_field_errors %}<ul class="errorlist">{{ form.non_field_errors }}</ul>{% endif %}
-    <button type="submit" class="btn btn-primary" {% if companies|length == 0 %}disabled{% endif %}>Créer le compte</button>
-  </form>
-</div>
+<div class="container-fluid">
 
-<div class="card">
-  <div class="table-wrap">
-  <table>
-    <thead><tr><th>Nom complet</th><th>Téléphone</th><th>Rôle</th><th>Entreprise</th><th>Statut</th><th class="text-right">Actions</th></tr></thead>
-    <tbody>
-      {% for u in users %}
-      <tr>
-        <td>{{ u.full_name }}</td>
-        <td>{{ u.phone_number }}</td>
-        <td>{% if u.role == "ADMIN" %}Administrateur{% else %}Vendeur{% endif %}</td>
-        <td>{{ u.company.name|default:"—" }}</td>
-        <td>
-          {% if u.is_active %}<span class="badge badge-gray">Actif</span>{% else %}<span class="badge badge-red">Désactivé</span>{% endif %}
-        </td>
-        <td class="text-right">
-          {% if u.id != request.user.id %}
-          <form method="post" action="{% url 'user_deactivate' u.id %}" style="display:inline;">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-outline btn-sm">{% if u.is_active %}Désactiver{% else %}Réactiver{% endif %}</button>
-          </form>
-          <form method="post" action="{% url 'user_delete' u.id %}" style="display:inline;"
-                onsubmit="return confirm('Supprimer définitivement « {{ u.full_name }} » ? Cette action est irréversible.');">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
-          </form>
-          {% else %}
-          <span class="text-muted" style="font-size:12px;">Vous-même</span>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <!-- En-tête -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h5 mb-0">Gestion des vendeurs</h1>
   </div>
+
+
+  <!-- Formulaire nouveau compte -->
+  <div class="card shadow-sm mb-4">
+
+    <div class="card-body">
+
+      <h2 class="h6 mb-4">
+        Nouveau compte
+      </h2>
+
+      {% if companies|length == 0 %}
+        <div class="alert alert-warning">
+          Créez d'abord une entreprise avant d'ajouter un vendeur.
+        </div>
+      {% endif %}
+
+
+      <form method="post">
+
+        {% csrf_token %}
+
+
+        <!-- Nom + Téléphone -->
+        <div class="row g-3 mb-3">
+
+          <div class="col-12 col-md-6">
+
+            <label for="{{ form.full_name.id_for_label }}" class="form-label">
+              Nom complet
+            </label>
+
+            {{ form.full_name }}
+
+            {% if form.full_name.errors %}
+              <div class="text-danger small mt-1">
+                {{ form.full_name.errors }}
+              </div>
+            {% endif %}
+
+          </div>
+
+
+          <div class="col-12 col-md-6">
+
+            <label for="{{ form.phone_number.id_for_label }}" class="form-label">
+              Téléphone (identifiant, 10 chiffres)
+            </label>
+
+            {{ form.phone_number }}
+
+            {% if form.phone_number.errors %}
+              <div class="text-danger small mt-1">
+                {{ form.phone_number.errors }}
+              </div>
+            {% endif %}
+
+          </div>
+
+        </div>
+
+
+        <!-- Mot de passe + Confirmation -->
+        <div class="row g-3 mb-3">
+
+          <div class="col-12 col-md-6">
+
+            <label for="{{ form.password.id_for_label }}" class="form-label">
+              Mot de passe
+            </label>
+
+            {{ form.password }}
+
+            {% if form.password.errors %}
+              <div class="text-danger small mt-1">
+                {{ form.password.errors }}
+              </div>
+            {% endif %}
+
+          </div>
+
+
+          <div class="col-12 col-md-6">
+
+            <label for="{{ form.confirm_password.id_for_label }}" class="form-label">
+              Confirmer
+            </label>
+
+            {{ form.confirm_password }}
+
+            {% if form.confirm_password.errors %}
+              <div class="text-danger small mt-1">
+                {{ form.confirm_password.errors }}
+              </div>
+            {% endif %}
+
+          </div>
+
+        </div>
+
+
+        <!-- Rôle + Entreprise -->
+        <div class="row g-3 mb-3">
+
+          <div class="col-12 col-md-6">
+
+            <label for="{{ form.role.id_for_label }}" class="form-label">
+              Rôle
+            </label>
+
+            {{ form.role }}
+
+          </div>
+
+
+          <div class="col-12 col-md-6">
+
+            <label for="{{ form.company.id_for_label }}" class="form-label">
+              Entreprise
+            </label>
+
+            {{ form.company }}
+
+            {% if form.company.errors %}
+              <div class="text-danger small mt-1">
+                {{ form.company.errors }}
+              </div>
+            {% endif %}
+
+          </div>
+
+        </div>
+
+
+        <!-- Erreurs générales -->
+        {% if form.non_field_errors %}
+          <div class="alert alert-danger">
+            {{ form.non_field_errors }}
+          </div>
+        {% endif %}
+
+
+        <!-- Bouton -->
+        <button
+          type="submit"
+          class="btn btn-primary"
+          {% if companies|length == 0 %}disabled{% endif %}
+        >
+          Créer le compte
+        </button>
+
+      </form>
+
+    </div>
+
+  </div>
+
+
+  <!-- Liste des vendeurs -->
+  <div class="card shadow-sm">
+
+    <div class="card-body">
+
+      <h2 class="h6 mb-3">
+        Liste des vendeurs
+      </h2>
+
+      <div class="table-responsive">
+
+        <table class="table table-hover align-middle mb-0">
+
+          <thead>
+            <tr>
+              <th>Nom complet</th>
+              <th>Téléphone</th>
+              <th>Rôle</th>
+              <th>Entreprise</th>
+              <th>Statut</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+
+
+          <tbody>
+
+            {% for u in users %}
+
+            <tr>
+
+              <td>
+                {{ u.full_name }}
+              </td>
+
+              <td>
+                {{ u.phone_number }}
+              </td>
+
+              <td>
+                {% if u.role == "ADMIN" %}
+                  Administrateur
+                {% else %}
+                  Vendeur
+                {% endif %}
+              </td>
+
+              <td>
+                {{ u.company.name|default:"—" }}
+              </td>
+
+              <td>
+
+                {% if u.is_active %}
+                  <span class="badge bg-secondary">
+                    Actif
+                  </span>
+                {% else %}
+                  <span class="badge bg-danger">
+                    Désactivé
+                  </span>
+                {% endif %}
+
+              </td>
+
+              <td class="text-end">
+
+                {% if u.id != request.user.id %}
+
+                  <!-- Désactiver / Réactiver -->
+                  <form
+                    method="post"
+                    action="{% url 'user_deactivate' u.id %}"
+                    class="d-inline"
+                  >
+
+                    {% csrf_token %}
+
+                    <button
+                      type="submit"
+                      class="btn btn-outline-secondary btn-sm"
+                    >
+                      {% if u.is_active %}
+                        Désactiver
+                      {% else %}
+                        Réactiver
+                      {% endif %}
+                    </button>
+
+                  </form>
+
+
+                  <!-- Supprimer -->
+                  <form
+                    method="post"
+                    action="{% url 'user_delete' u.id %}"
+                    class="d-inline"
+                    onsubmit="return confirm('Supprimer définitivement « {{ u.full_name }} » ? Cette action est irréversible.');"
+                  >
+
+                    {% csrf_token %}
+
+                    <button
+                      type="submit"
+                      class="btn btn-danger btn-sm"
+                    >
+                      Supprimer
+                    </button>
+
+                  </form>
+
+                {% else %}
+
+                  <span class="text-muted small">
+                    Vous-même
+                  </span>
+
+                {% endif %}
+
+              </td>
+
+            </tr>
+
+            {% empty %}
+
+            <tr>
+              <td colspan="6" class="text-center text-muted py-4">
+                Aucun vendeur enregistré.
+              </td>
+            </tr>
+
+            {% endfor %}
+
+          </tbody>
+
+        </table>
+
+      </div>
+
+    </div>
+
+  </div>
+
 </div>
+
 {% endblock %}
+```

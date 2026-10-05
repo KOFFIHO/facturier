@@ -1,58 +1,461 @@
 {% extends "core/base.html" %}
+
 {% block title %}Prestations - Facturier{% endblock %}
+
 {% block content %}
-<div class="flex-between mb-4">
-  <h1 style="font-size:18px; margin:0;">Catalogue des prestations</h1>
+
+<div class="container-fluid px-0">
+
+    <!-- =====================================================
+         EN-TÊTE
+    ====================================================== -->
+    <div class="d-flex align-items-center justify-content-between mb-4">
+
+        <div>
+            <h1 class="h4 mb-1">
+                Catalogue des prestations
+            </h1>
+
+            <p class="text-muted mb-0">
+                Gérez les prestations proposées par votre entreprise.
+            </p>
+        </div>
+
+    </div>
+
+
+    {% if not company %}
+
+        <!-- =================================================
+             ENTREPRISE NON CONFIGURÉE
+        ================================================== -->
+        <div class="alert alert-warning" role="alert">
+
+            <i class="bi bi-exclamation-triangle me-2"></i>
+
+            Créez d'abord une entreprise
+            (page « Entreprises »)
+            pour gérer ses prestations.
+
+        </div>
+
+    {% else %}
+
+
+        <!-- =================================================
+             RECHERCHE
+        ================================================== -->
+        <div class="card shadow-sm mb-4">
+
+            <div class="card-header bg-body">
+
+                <h2 class="h6 mb-0">
+                    <i class="bi bi-search me-2 text-primary"></i>
+                    Rechercher une prestation
+                </h2>
+
+            </div>
+
+            <div class="card-body">
+
+                <form method="get">
+
+                    <div class="row g-3">
+
+                        <div class="col-12 col-md-8 col-lg-6 col-xl-4">
+
+                            <label
+                                for="service-search"
+                                class="form-label"
+                            >
+                                Recherche
+                            </label>
+
+                            <div class="input-group">
+
+                                <span class="input-group-text">
+                                    <i class="bi bi-search"></i>
+                                </span>
+
+                                <input
+                                    type="text"
+                                    id="service-search"
+                                    name="q"
+                                    value="{{ query }}"
+                                    class="form-control"
+                                    placeholder="Rechercher une prestation..."
+                                >
+
+                            </div>
+
+                        </div>
+
+                        <div class="col-12 col-md-auto d-flex align-items-end">
+
+                            <button
+                                type="submit"
+                                class="btn btn-primary"
+                            >
+                                <i class="bi bi-search me-1"></i>
+                                Rechercher
+                            </button>
+
+                        </div>
+
+                        {% if query %}
+
+                            <div class="col-12 col-md-auto d-flex align-items-end">
+
+                                <a
+                                    href="{% url 'services_list' %}"
+                                    class="btn btn-outline-secondary"
+                                >
+                                    <i class="bi bi-x-circle me-1"></i>
+                                    Réinitialiser
+                                </a>
+
+                            </div>
+
+                        {% endif %}
+
+                    </div>
+
+                </form>
+
+            </div>
+
+        </div>
+
+
+        <!-- =================================================
+             AJOUTER UNE PRESTATION
+        ================================================== -->
+        <div class="card shadow-sm mb-4">
+
+            <div class="card-header bg-body">
+
+                <h2 class="h6 mb-0">
+
+                    <i class="bi bi-plus-circle me-2 text-primary"></i>
+
+                    Ajouter une prestation
+
+                </h2>
+
+            </div>
+
+
+            <div class="card-body">
+
+                <form method="post">
+
+                    {% csrf_token %}
+
+
+                    {% if form.non_field_errors %}
+
+                        <div class="alert alert-danger">
+
+                            {{ form.non_field_errors }}
+
+                        </div>
+
+                    {% endif %}
+
+
+                    <div class="row g-3">
+
+                        <!-- Désignation -->
+                        <div class="col-12 col-lg-6">
+
+                            <label
+                                for="{{ form.name.id_for_label }}"
+                                class="form-label"
+                            >
+                                Désignation
+                            </label>
+
+                            {{ form.name }}
+
+                            {% if form.name.errors %}
+
+                                <div class="invalid-feedback d-block">
+                                    {{ form.name.errors }}
+                                </div>
+
+                            {% endif %}
+
+                        </div>
+
+
+                        <!-- Prix -->
+                        <div class="col-12 col-md-6 col-lg-3">
+
+                            <label
+                                for="{{ form.default_price.id_for_label }}"
+                                class="form-label"
+                            >
+                                Prix indicatif (F CFA)
+                            </label>
+
+                            {{ form.default_price }}
+
+                            {% if form.default_price.errors %}
+
+                                <div class="invalid-feedback d-block">
+                                    {{ form.default_price.errors }}
+                                </div>
+
+                            {% endif %}
+
+                        </div>
+
+
+                        <!-- Statut -->
+                        <div class="col-12 col-md-6 col-lg-3">
+
+                            <div class="form-check mt-lg-4 pt-lg-2">
+
+                                {{ form.is_active }}
+
+                                <label
+                                    class="form-check-label"
+                                    for="{{ form.is_active.id_for_label }}"
+                                >
+                                    Prestation active
+                                </label>
+
+                            </div>
+
+                            {% if form.is_active.errors %}
+
+                                <div class="invalid-feedback d-block">
+                                    {{ form.is_active.errors }}
+                                </div>
+
+                            {% endif %}
+
+                        </div>
+
+
+                        <!-- Description -->
+                        <div class="col-12">
+
+                            <label
+                                for="{{ form.description.id_for_label }}"
+                                class="form-label"
+                            >
+                                Description
+                            </label>
+
+                            {{ form.description }}
+
+                            {% if form.description.errors %}
+
+                                <div class="invalid-feedback d-block">
+                                    {{ form.description.errors }}
+                                </div>
+
+                            {% endif %}
+
+                        </div>
+
+
+                        <!-- Bouton -->
+                        <div class="col-12">
+
+                            <button
+                                type="submit"
+                                class="btn btn-primary"
+                            >
+                                <i class="bi bi-plus-lg me-1"></i>
+                                Ajouter la prestation
+                            </button>
+
+                        </div>
+
+                    </div>
+
+                </form>
+
+            </div>
+
+        </div>
+
+
+        <!-- =================================================
+             LISTE DES PRESTATIONS
+        ================================================== -->
+        <div class="card shadow-sm">
+
+            <div class="card-header bg-body">
+
+                <div class="d-flex align-items-center justify-content-between">
+
+                    <h2 class="h6 mb-0">
+
+                        <i class="bi bi-list-ul me-2 text-primary"></i>
+
+                        Liste des prestations
+
+                    </h2>
+
+
+                    <span class="badge text-bg-secondary">
+
+                        {{ services|length }}
+
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <div class="card-body p-0">
+
+                <div class="table-responsive">
+
+                    <table class="table table-hover align-middle mb-0">
+
+                        <thead>
+
+                            <tr>
+
+                                <th scope="col">
+                                    Désignation
+                                </th>
+
+                                <th scope="col">
+                                    Prix indicatif
+                                </th>
+
+                                <th scope="col">
+                                    Statut
+                                </th>
+
+                                <th
+                                    scope="col"
+                                    class="text-end"
+                                >
+                                    Actions
+                                </th>
+
+                            </tr>
+
+                        </thead>
+
+
+                        <tbody>
+
+                            {% for s in services %}
+
+                                <tr>
+
+                                    <td>
+                                        {{ s.name }}
+                                    </td>
+
+
+                                    <td class="text-nowrap fw-semibold">
+
+                                        {{ s.default_price|floatformat:0 }}
+                                        F CFA
+
+                                    </td>
+
+
+                                    <td>
+
+                                        {% if s.is_active %}
+
+                                            <span class="badge text-bg-success">
+                                                Active
+                                            </span>
+
+                                        {% else %}
+
+                                            <span class="badge text-bg-danger">
+                                                Inactive
+                                            </span>
+
+                                        {% endif %}
+
+                                    </td>
+
+
+                                    <td class="text-end">
+
+                                        <div class="d-flex justify-content-end gap-2">
+
+                                            <!-- Modifier -->
+                                            <a
+                                                href="{% url 'service_edit' s.id %}"
+                                                class="btn btn-outline-secondary btn-sm"
+                                            >
+                                                <i class="bi bi-pencil me-1"></i>
+                                                Modifier
+                                            </a>
+
+
+                                            <!-- Supprimer -->
+                                            <form
+                                                method="post"
+                                                action="{% url 'service_delete' s.id %}"
+                                                class="d-inline"
+                                                onsubmit="return confirm('Supprimer cette prestation ?');"
+                                            >
+
+                                                {% csrf_token %}
+
+                                                <button
+                                                    type="submit"
+                                                    class="btn btn-danger btn-sm"
+                                                >
+                                                    <i class="bi bi-trash me-1"></i>
+                                                    Supprimer
+                                                </button>
+
+                                            </form>
+
+                                        </div>
+
+                                    </td>
+
+                                </tr>
+
+
+                            {% empty %}
+
+                                <tr>
+
+                                    <td
+                                        colspan="4"
+                                        class="text-center text-muted py-4"
+                                    >
+
+                                        <i class="bi bi-inbox fs-4 d-block mb-2"></i>
+
+                                        Aucune prestation.
+
+                                    </td>
+
+                                </tr>
+
+                            {% endfor %}
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    {% endif %}
+
 </div>
 
-{% if not company %}
-  <div class="alert alert-warning">Créez d'abord une entreprise (page « Entreprises ») pour gérer ses prestations.</div>
-{% else %}
-  <form method="get" class="mb-4" style="max-width:320px;">
-    <input type="text" name="q" value="{{ query }}" placeholder="Rechercher une prestation...">
-  </form>
-
-  <div class="card mb-4">
-    <h2 style="font-size:15px; margin-top:0;">Ajouter une prestation</h2>
-    <form method="post">
-      {% csrf_token %}
-      <div class="field"><label>Désignation</label>{{ form.name }}</div>
-      <div class="field"><label>Description</label>{{ form.description }}</div>
-      <div class="field-row">
-        <div class="field"><label>Prix indicatif (F CFA)</label>{{ form.default_price }}</div>
-        <div class="field" style="display:flex; align-items:center; gap:8px; margin-top:20px;">
-          {{ form.is_active }} <label style="margin:0;">Prestation active</label>
-        </div>
-      </div>
-      {% if form.non_field_errors %}<ul class="errorlist">{{ form.non_field_errors }}</ul>{% endif %}
-      <button type="submit" class="btn btn-primary">Ajouter la prestation</button>
-    </form>
-  </div>
-
-  <div class="card">
-    <div class="table-wrap">
-    <table>
-      <thead><tr><th>Désignation</th><th>Prix indicatif</th><th>Statut</th><th class="text-right">Actions</th></tr></thead>
-      <tbody>
-        {% for s in services %}
-        <tr>
-          <td>{{ s.name }}</td>
-          <td>{{ s.default_price|floatformat:0 }} F CFA</td>
-          <td>{% if s.is_active %}<span class="badge badge-gray">Active</span>{% else %}<span class="badge badge-red">Inactive</span>{% endif %}</td>
-          <td class="text-right">
-            <a href="{% url 'service_edit' s.id %}" class="btn btn-outline btn-sm">Modifier</a>
-            <form method="post" action="{% url 'service_delete' s.id %}" style="display:inline;" onsubmit="return confirm('Supprimer cette prestation ?');">
-              {% csrf_token %}
-              <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
-            </form>
-          </td>
-        </tr>
-        {% empty %}
-        <tr><td colspan="4" class="text-muted" style="text-align:center;">Aucune prestation.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    </div>
-  </div>
-{% endif %}
 {% endblock %}

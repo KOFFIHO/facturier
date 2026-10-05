@@ -6,7 +6,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
 from facturier_mvt import settings
-from .models import SaleItem, SalePayment, SyncState
+from .models import Employee, SaleItem, SalePayment, SyncState
 from .sync_client import push_to_cloud
 
 from datetime import date, datetime, time, timedelta
@@ -32,6 +32,7 @@ from .forms import (
     CompanyStampForm,
     CreateUserForm,
     DepenseForm,
+    EmployeeForm,
     LoginForm,
     ProductForm,
     ProductImportForm,
@@ -1265,6 +1266,36 @@ def service_delete_view(request, service_id):
 
 
 @manager_required
+def employees_list_view(request):
+    company = get_active_company(request)
+    if not company:
+        return render(request, "core/employees_list.html", {"company": None})
+
+    employees = Employee.objects.filter(company=company)
+    form = EmployeeForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        Employee.objects.create(
+            company=company, full_name=form.cleaned_data["full_name"],
+            role=form.cleaned_data["role"], phone=form.cleaned_data.get("phone") or None,
+        )
+        messages.success(request, "Employé ajouté avec succès.")
+        return redirect("employees_list")
+
+    return render(request, "core/employees_list.html", {"company": company, "employees": employees, "form": form})
+
+
+@manager_required
+def employee_deactivate_view(request, employee_id):
+    employee = get_object_or_404(Employee, id=employee_id)
+    if request.method == "POST":
+        employee.is_active = not employee.is_active
+        employee.save(update_fields=["is_active"])
+        messages.success(request, f"{'Réactivé' if employee.is_active else 'Désactivé'} avec succès.")
+    return redirect("employees_list")
+
+
+
+@manager_required
 def depenses_list_view(request):
     company = get_active_company(request)
     if not company:
@@ -1283,6 +1314,7 @@ def depenses_list_view(request):
         depenses = depenses.filter(date__lte=end_date)
 
     form = DepenseForm(request.POST or None, initial={"date": timezone.now().date()})
+    form.fields["employee"].queryset = Employee.objects.filter(company=company, is_active=True)
     if request.method == "POST" and "create_depense" in request.POST and form.is_valid():
         depense = form.save(commit=False)
         depense.company = company

@@ -1,64 +1,485 @@
 {% extends "core/base.html" %}
+
 {% block title %}Dépenses - Facturier{% endblock %}
+
 {% block content %}
-<h1 style="font-size:18px; margin-bottom:16px;">Dépenses</h1>
 
-{% if not company %}
-  <div class="alert alert-warning">Créez d'abord une entreprise pour saisir des dépenses.</div>
-{% else %}
-<div class="card mb-4">
-  <h2 style="font-size:15px; margin-top:0;">Nouvelle dépense</h2>
-  <form method="post">
-    {% csrf_token %}
-    <div class="field-row">
-      <div class="field"><label>Date</label>{{ form.date }}</div>
-      <div class="field"><label>Nature de dépense</label>{{ form.type_depense }}</div>
+<div class="container-fluid px-0">
+
+    <!-- =====================================================
+         TITRE
+    ====================================================== -->
+    <div class="d-flex align-items-center justify-content-between mb-4">
+        <div>
+            <h1 class="h4 mb-1">Dépenses</h1>
+            <p class="text-muted mb-0">
+                Gestion et suivi des dépenses de l'entreprise
+            </p>
+        </div>
     </div>
-    <div class="field-row">
-      <div class="field"><label>Objet de dépense</label>{{ form.label }}</div>
-      <div class="field"><label>Montant (F CFA)</label>{{ form.amount }}</div>
-    </div>
-    <div class="field"><label>Nom du demandeur</label>{{ form.comment }}</div>
-    {% if form.non_field_errors %}<ul class="errorlist">{{ form.non_field_errors }}</ul>{% endif %}
-    <button type="submit" name="create_depense" value="1" class="btn btn-primary">Enregistrer</button>
-  </form>
+
+
+    {% if not company %}
+
+        <!-- =================================================
+             ENTREPRISE NON CONFIGURÉE
+        ================================================== -->
+        <div class="alert alert-warning" role="alert">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            Créez d'abord une entreprise pour saisir des dépenses.
+        </div>
+
+    {% else %}
+
+
+        <!-- =================================================
+             NOUVELLE DÉPENSE
+        ================================================== -->
+        <div class="card shadow-sm mb-4">
+
+            <div class="card-header bg-body">
+                <h2 class="h6 mb-0">
+                    <i class="bi bi-plus-circle me-2 text-primary"></i>
+                    Nouvelle dépense
+                </h2>
+            </div>
+
+            <div class="card-body">
+
+                <form method="post">
+
+                    {% csrf_token %}
+
+                    {% if form.non_field_errors %}
+                        <div class="alert alert-danger">
+                            {{ form.non_field_errors }}
+                        </div>
+                    {% endif %}
+
+
+                    <div class="row g-3">
+
+                        <!-- Date -->
+                        <div class="col-12 col-md-6 col-xl-3">
+
+                            <label
+                                for="{{ form.date.id_for_label }}"
+                                class="form-label"
+                            >
+                                Date
+                            </label>
+
+                            {{ form.date }}
+
+                            {% if form.date.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.date.errors }}
+                                </div>
+                            {% endif %}
+
+                        </div>
+
+
+                        <!-- Nature -->
+                        <div class="col-12 col-md-6 col-xl-3">
+
+                            <label
+                                for="{{ form.type_depense.id_for_label }}"
+                                class="form-label"
+                            >
+                                Nature de dépense
+                            </label>
+
+                            {{ form.type_depense }}
+
+                            {% if form.type_depense.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.type_depense.errors }}
+                                </div>
+                            {% endif %}
+
+                        </div>
+
+
+                        <!-- Objet -->
+                        <div class="col-12 col-md-6 col-xl-3">
+
+                            <label
+                                for="{{ form.label.id_for_label }}"
+                                class="form-label"
+                            >
+                                Objet de dépense
+                            </label>
+
+                            {{ form.label }}
+
+                            {% if form.label.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.label.errors }}
+                                </div>
+                            {% endif %}
+
+                        </div>
+
+
+                        <!-- Montant -->
+                        <div class="col-12 col-md-6 col-xl-3">
+
+                            <label
+                                for="{{ form.amount.id_for_label }}"
+                                class="form-label"
+                            >
+                                Montant (F CFA)
+                            </label>
+
+                            {{ form.amount }}
+
+                            {% if form.amount.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.amount.errors }}
+                                </div>
+                            {% endif %}
+
+                        </div>
+
+
+                        <!-- Employé / Gérant -->
+                        <div class="col-12 col-md-6 col-xl-3">
+
+                            <label
+                                for="{{ form.employee.id_for_label }}"
+                                class="form-label"
+                            >
+                                Demandée par (employé / gérant)
+                            </label>
+
+                            {{ form.employee }}
+
+                            {% if form.employee.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.employee.errors }}
+                                </div>
+                            {% endif %}
+
+                        </div>
+
+
+                        <!-- Commentaire -->
+                        <div class="col-12, col-md-6 col-xl-3">
+
+                            <label
+                                for="{{ form.comment.id_for_label }}"
+                                class="form-label"
+                            >
+                                Commentaire
+                            </label>
+
+                            {{ form.comment }}
+
+                            {% if form.comment.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.comment.errors }}
+                                </div>
+                            {% endif %}
+
+                        </div>
+
+
+                        <!-- Bouton -->
+                        <div class="col-12">
+
+                            <button
+                                type="submit"
+                                name="create_depense"
+                                value="1"
+                                class="btn btn-primary"
+                            >
+                                <i class="bi bi-save me-1"></i>
+                                Enregistrer
+                            </button>
+
+                        </div>
+
+                    </div>
+
+                </form>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- =================================================
+             FILTRES
+        ================================================== -->
+        <div class="card shadow-sm mb-4">
+
+            <div class="card-header bg-body">
+                <h2 class="h6 mb-0">
+                    <i class="bi bi-funnel me-2 text-primary"></i>
+                    Rechercher et filtrer
+                </h2>
+            </div>
+
+            <div class="card-body">
+
+                <form method="get">
+
+                    <div class="row g-3 align-items-end">
+
+                        <!-- Recherche -->
+                        <div class="col-12 col-lg-5">
+
+                            <label
+                                for="depense-search"
+                                class="form-label"
+                            >
+                                Rechercher
+                            </label>
+
+                            <input
+                                type="text"
+                                id="depense-search"
+                                name="q"
+                                value="{{ query }}"
+                                class="form-control"
+                                placeholder="Type ou objet..."
+                            >
+
+                        </div>
+
+
+                        <!-- Date début -->
+                        <div class="col-12 col-md-6 col-lg-2">
+
+                            <label
+                                for="depense-start-date"
+                                class="form-label"
+                            >
+                                Du
+                            </label>
+
+                            <input
+                                type="date"
+                                id="depense-start-date"
+                                name="start_date"
+                                value="{{ start_date }}"
+                                class="form-control"
+                            >
+
+                        </div>
+
+
+                        <!-- Date fin -->
+                        <div class="col-12 col-md-6 col-lg-2">
+
+                            <label
+                                for="depense-end-date"
+                                class="form-label"
+                            >
+                                Au
+                            </label>
+
+                            <input
+                                type="date"
+                                id="depense-end-date"
+                                name="end_date"
+                                value="{{ end_date }}"
+                                class="form-control"
+                            >
+
+                        </div>
+
+
+                        <!-- Filtrer -->
+                        <div class="col-12 col-md-6 col-lg-1">
+
+                            <button
+                                type="submit"
+                                class="btn btn-primary w-100"
+                            >
+                                <i class="bi bi-search"></i>
+                                <span class="d-lg-none ms-1">Filtrer</span>
+                            </button>
+
+                        </div>
+
+
+                        <!-- Réinitialiser -->
+                        <div class="col-12 col-md-6 col-lg-2">
+
+                            <a
+                                href="{% url 'depenses_list' %}"
+                                class="btn btn-outline-secondary w-100"
+                            >
+                                <i class="bi bi-x-circle me-1"></i>
+                                Réinitialiser
+                            </a>
+
+                        </div>
+
+                    </div>
+
+                </form>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- =================================================
+             TOTAL
+        ================================================== -->
+        <div class="d-flex justify-content-end mb-3">
+
+            <div class="alert alert-primary mb-0 py-2 px-3">
+
+                <i class="bi bi-wallet2 me-2"></i>
+
+                Total :
+                <strong>
+                    {{ total|floatformat:0 }} F CFA
+                </strong>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- =================================================
+             LISTE DES DÉPENSES
+        ================================================== -->
+        <div class="card shadow-sm">
+
+            <div class="card-header bg-body">
+
+                <div class="d-flex align-items-center justify-content-between">
+
+                    <h2 class="h6 mb-0">
+                        <i class="bi bi-list-ul me-2 text-primary"></i>
+                        Liste des dépenses
+                    </h2>
+
+                    <span class="badge text-bg-secondary">
+                        {{ depenses|length }}
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <div class="card-body p-0">
+
+                <div class="table-responsive">
+
+                    <table class="table table-hover align-middle mb-0">
+
+                        <thead>
+
+                            <tr>
+                                <th scope="col">Date</th>
+                                <th scope="col">Nature</th>
+                                <th scope="col">Objet de dépense</th>
+                                <th scope="col">Montant</th>
+                                <th scope="col">Demandé par</th>
+                                <th scope="col">Commentaire</th>
+                                <th scope="col" class="text-end">
+                                    Actions
+                                </th>
+                            </tr>
+
+                        </thead>
+
+
+                        <tbody>
+
+                            {% for d in depenses %}
+
+                                <tr>
+
+                                    <td class="text-nowrap">
+                                        {{ d.date|date:"d/m/Y" }}
+                                    </td>
+
+                                    <td>
+                                        {{ d.type_depense }}
+                                    </td>
+
+                                    <td>
+                                        {{ d.label }}
+                                    </td>
+
+                                    <td class="text-nowrap fw-semibold">
+                                        {{ d.amount|floatformat:0 }} F CFA
+                                    </td>
+
+                                    <td>
+                                        {% if d.employee %}{{ d.employee.full_name }}{% else %}—{% endif %}
+                                    </td>
+
+                                    <td>
+                                        {{ d.comment|default:"—" }}
+                                    </td>
+
+                                    <td class="text-end">
+
+                                        <form
+                                            method="post"
+                                            action="{% url 'depense_delete' d.id %}"
+                                            class="d-inline"
+                                            onsubmit="return confirm('Supprimer cette dépense ?');"
+                                        >
+
+                                            {% csrf_token %}
+
+                                            <button
+                                                type="submit"
+                                                class="btn btn-danger btn-sm"
+                                                title="Supprimer"
+                                            >
+                                                <i class="bi bi-trash me-1"></i>
+                                                Supprimer
+                                            </button>
+
+                                        </form>
+
+                                    </td>
+
+                                </tr>
+
+
+                            {% empty %}
+
+                                <tr>
+
+                                    <td
+                                        colspan="6"
+                                        class="text-center text-muted py-4"
+                                    >
+                                        <i class="bi bi-inbox fs-4 d-block mb-2"></i>
+                                        Aucune dépense.
+                                    </td>
+
+                                </tr>
+
+                            {% endfor %}
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    {% endif %}
+
 </div>
 
-<form method="get" class="card mb-4 flex gap-2" style="align-items:flex-end; flex-wrap:wrap;">
-  <div class="field" style="margin:0;"><label>Rechercher</label><input type="text" name="q" value="{{ query }}" placeholder="Type ou Objet..."></div>
-  <div class="field" style="margin:0;"><label>Du</label><input type="date" name="start_date" value="{{ start_date }}"></div>
-  <div class="field" style="margin:0;"><label>Au</label><input type="date" name="end_date" value="{{ end_date }}"></div>
-  <button type="submit" class="btn btn-primary">Filtrer</button>
-  <a href="{% url 'depenses_list' %}" class="btn btn-outline">✕ Réinitialiser</a>
-</form>
-
-<p class="text-muted mb-2">Total : <strong>{{ total|floatformat:0 }} F CFA</strong></p>
-
-<div class="card">
-  <div class="table-wrap">
-  <table>
-    <thead><tr><th>Date</th><th>Nature</th><th>Objet de dépense</th><th>Montant</th><th>Commentaire</th><th class="text-right">Actions</th></tr></thead>
-    <tbody>
-      {% for d in depenses %}
-      <tr>
-        <td>{{ d.date|date:"d/m/Y" }}</td>
-        <td>{{ d.type_depense }}</td>
-        <td>{{ d.label }}</td>
-        <td>{{ d.amount|floatformat:0 }} F CFA</td>
-        <td>{{ d.comment|default:"—" }}</td>
-        <td class="text-right">
-          <form method="post" action="{% url 'depense_delete' d.id %}" style="display:inline;" onsubmit="return confirm('Supprimer cette dépense ?');">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
-          </form>
-        </td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="6" style="text-align:center;" class="text-muted">Aucune dépense.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-</div>
-{% endif %}
 {% endblock %}

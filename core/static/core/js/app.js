@@ -1,54 +1,34 @@
-// Facturier Automatique - JavaScript minimal (vanilla, sans dépendance).
-// - Recherche produit "en direct" à la Caisse, persistée jusqu'à réinitialisation
-// - Réduction globale appliquée automatiquement au Total Net (calcul en direct)
-// - Montant pré-rempli au Total Net dès qu'un mode de paiement est coché,
-//   modifiable, avec déduction progressive pour chaque mode supplémentaire
-// - Déconnexion automatique à l'échéance de la session de caisse
+// Applique le thème mémorisé le plus tôt possible (évite un flash clair)
+(function () {
+  var savedTheme = localStorage.getItem("facturier_theme");
+  document.documentElement.setAttribute("data-bs-theme", savedTheme === "dark" ? "dark" : "light");
+})();
 
 document.addEventListener("DOMContentLoaded", function () {
-  var SEARCH_KEY = "facturier_product_search";
   var DISCOUNT_TYPE_KEY = "facturier_discount_type";
   var DISCOUNT_VALUE_KEY = "facturier_discount_value";
 
   // -------------------------------------------------------------------
-  // 1) Recherche produit en direct, persistée jusqu'à réinitialisation
+  // Bascule mode sombre / clair (natif Bootstrap)
   // -------------------------------------------------------------------
-  var searchInput = document.getElementById("product-search-input");
-  var productRows = document.querySelectorAll("[data-product-row]");
-
-  function applySearchFilter(query) {
-    productRows.forEach(function (row) {
-      var name = (row.getAttribute("data-product-name") || "").toLowerCase();
-      row.style.display = name.indexOf(query) !== -1 ? "" : "none";
-    });
-  }
-
-  if (searchInput) {
-    var savedQuery = sessionStorage.getItem(SEARCH_KEY) || "";
-    if (savedQuery) {
-      searchInput.value = savedQuery;
-      applySearchFilter(savedQuery.toLowerCase());
-    }
-    searchInput.addEventListener("input", function () {
-      var query = searchInput.value.trim();
-      sessionStorage.setItem(SEARCH_KEY, query);
-      applySearchFilter(query.toLowerCase());
-    });
-  }
-
-  var resetSearchBtn = document.getElementById("reset-search-btn");
-  if (resetSearchBtn) {
-    resetSearchBtn.addEventListener("click", function () {
-      sessionStorage.removeItem(SEARCH_KEY);
-      if (searchInput) {
-        searchInput.value = "";
-        applySearchFilter("");
-      }
+  var themeToggle = document.getElementById("theme-toggle");
+  if (themeToggle) {
+    var refreshThemeIcon = function () {
+      var isDark = document.documentElement.getAttribute("data-bs-theme") === "dark";
+      themeToggle.innerHTML = isDark ? '<i class="bi bi-sun"></i>' : '<i class="bi bi-moon-stars"></i>';
+    };
+    refreshThemeIcon();
+    themeToggle.addEventListener("click", function () {
+      var isDark = document.documentElement.getAttribute("data-bs-theme") === "dark";
+      var next = isDark ? "light" : "dark";
+      document.documentElement.setAttribute("data-bs-theme", next);
+      localStorage.setItem("facturier_theme", next);
+      refreshThemeIcon();
     });
   }
 
   // -------------------------------------------------------------------
-  // 2) Réduction globale : calcul et affichage en direct (sans rechargement)
+  // Réduction globale : calcul et affichage en direct (sans rechargement)
   // -------------------------------------------------------------------
   var discountTypeSelect = document.getElementById("discount-type-select");
   var discountValueField = document.getElementById("discount-value-field");
@@ -96,7 +76,6 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   if (discountTypeSelect) {
-    // Restauration après un rechargement (ex : ajout d'un produit au panier)
     var savedType = sessionStorage.getItem(DISCOUNT_TYPE_KEY);
     if (savedType) {
       discountTypeSelect.value = savedType;
@@ -122,11 +101,11 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  updateTotalsDisplay(); // calcule l'affichage initial (y compris après restauration)
+  updateTotalsDisplay();
 
   // -------------------------------------------------------------------
-  // 3) Paiements : montant pré-rempli au Total Net restant, déduit au fur
-  //    et à mesure que d'autres modes de paiement sont cochés
+  // Paiements : montant pré-rempli au Total Net restant, déduit au fur
+  // et à mesure que d'autres modes de paiement sont cochés
   // -------------------------------------------------------------------
   document.querySelectorAll(".payment-method-checkbox").forEach(function (checkbox) {
     checkbox.addEventListener("change", function () {
@@ -151,13 +130,10 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   });
 
-  // Nettoyage de la recherche/réduction mémorisées une fois la vente
-  // validée ou le panier vidé (pour repartir sur une base propre)
   ["validate-sale-form", "clear-cart-form"].forEach(function (formId) {
     var form = document.getElementById(formId);
     if (form) {
       form.addEventListener("submit", function () {
-        sessionStorage.removeItem(SEARCH_KEY);
         sessionStorage.removeItem(DISCOUNT_TYPE_KEY);
         sessionStorage.removeItem(DISCOUNT_VALUE_KEY);
       });
@@ -165,7 +141,7 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   // -------------------------------------------------------------------
-  // 4) Déconnexion automatique à l'échéance de la session de caisse
+  // Déconnexion automatique à l'échéance de la session de caisse
   // -------------------------------------------------------------------
   var sessionEl = document.getElementById("cash-session-data");
   if (sessionEl) {

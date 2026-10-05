@@ -1,47 +1,384 @@
 {% extends "core/base.html" %}
+
 {% block title %}{{ company.name }} - Facturier{% endblock %}
+
 {% block content %}
-<a href="{% url 'companies_list' %}" class="text-muted" style="font-size:13px;">&larr; Toutes les entreprises</a>
-<h1 style="font-size:18px; margin-top:8px;">{{ company.name }}</h1>
 
-<div class="card">
-  <h2 style="font-size:15px; margin-top:0;">Informations</h2>
-  <form method="post">
-    {% csrf_token %}
-    <div class="field"><label>Nom de l'entreprise</label>{{ form.name }}</div>
-    <div class="field"><label>Adresse</label>{{ form.address }}</div>
-    <div class="field-row">
-      <div class="field"><label>Téléphone</label>{{ form.phone }}</div>
-      <div class="field"><label>Email</label>{{ form.email }}</div>
+<div class="container-fluid px-0">
+
+    <!-- Retour -->
+    <div class="mb-3">
+        <a href="{% url 'companies_list' %}" class="text-decoration-none text-muted">
+            <i class="bi bi-arrow-left me-1"></i>
+            Toutes les entreprises
+        </a>
     </div>
-    <div class="field"><label>Site web</label>{{ form.website }}</div>
-    <div class="field"><label>Taux de TVA (%)</label>{{ form.tva_rate }}</div>
-    <button type="submit" name="save_info" value="1" class="btn btn-primary">Enregistrer</button>
-  </form>
+
+    <!-- Titre -->
+    <div class="mb-4">
+        <h1 class="h4 mb-1">{{ company.name }}</h1>
+        <p class="text-muted mb-0">
+            Gérez les informations et les éléments visuels de votre entreprise.
+        </p>
+    </div>
+
+
+    <!-- ========================= -->
+    <!-- INFORMATIONS ENTREPRISE -->
+    <!-- ========================= -->
+
+    <div class="card shadow-sm mb-4">
+
+        <div class="card-header bg-body">
+            <h2 class="h6 mb-0">
+                <i class="bi bi-building me-2 text-primary"></i>
+                Informations de l'entreprise
+            </h2>
+        </div>
+
+        <div class="card-body">
+
+            <form method="post">
+                {% csrf_token %}
+
+                <div class="row g-3">
+
+                    <!-- Nom -->
+                    <div class="col-12">
+                        <label for="{{ form.name.id_for_label }}" class="form-label">
+                            Nom de l'entreprise
+                        </label>
+
+                        {{ form.name }}
+
+                        {% if form.name.errors %}
+                            <div class="invalid-feedback d-block">
+                                {{ form.name.errors }}
+                            </div>
+                        {% endif %}
+                    </div>
+
+
+                    <!-- Adresse -->
+                    <div class="col-12">
+                        <label for="{{ form.address.id_for_label }}" class="form-label">
+                            Adresse
+                        </label>
+
+                        {{ form.address }}
+
+                        {% if form.address.errors %}
+                            <div class="invalid-feedback d-block">
+                                {{ form.address.errors }}
+                            </div>
+                        {% endif %}
+                    </div>
+
+
+                    <!-- Téléphone -->
+                    <div class="col-12 col-md-6">
+
+                        <label for="{{ form.phone.id_for_label }}" class="form-label">
+                            Téléphone
+                        </label>
+
+                        {{ form.phone }}
+
+                        {% if form.phone.errors %}
+                            <div class="invalid-feedback d-block">
+                                {{ form.phone.errors }}
+                            </div>
+                        {% endif %}
+
+                    </div>
+
+
+                    <!-- Email -->
+                    <div class="col-12 col-md-6">
+
+                        <label for="{{ form.email.id_for_label }}" class="form-label">
+                            Email
+                        </label>
+
+                        {{ form.email }}
+
+                        {% if form.email.errors %}
+                            <div class="invalid-feedback d-block">
+                                {{ form.email.errors }}
+                            </div>
+                        {% endif %}
+
+                    </div>
+
+
+                    <!-- Site web -->
+                    <div class="col-12 col-lg-8">
+
+                        <label for="{{ form.website.id_for_label }}" class="form-label">
+                            Site web
+                        </label>
+
+                        {{ form.website }}
+
+                        {% if form.website.errors %}
+                            <div class="invalid-feedback d-block">
+                                {{ form.website.errors }}
+                            </div>
+                        {% endif %}
+
+                    </div>
+
+
+                    <!-- TVA -->
+                    <div class="col-12 col-lg-4">
+
+                        <label for="{{ form.tva_rate.id_for_label }}" class="form-label">
+                            Taux de TVA (%)
+                        </label>
+
+                        {{ form.tva_rate }}
+
+                        {% if form.tva_rate.errors %}
+                            <div class="invalid-feedback d-block">
+                                {{ form.tva_rate.errors }}
+                            </div>
+                        {% endif %}
+
+                    </div>
+
+
+                    <!-- Erreurs générales -->
+                    {% if form.non_field_errors %}
+                        <div class="col-12">
+                            <div class="alert alert-danger mb-0">
+                                {{ form.non_field_errors }}
+                            </div>
+                        </div>
+                    {% endif %}
+
+
+                    <!-- Bouton -->
+                    <div class="col-12">
+
+                        <button
+                            type="submit"
+                            name="save_info"
+                            value="1"
+                            class="btn btn-primary"
+                        >
+                            <i class="bi bi-check-lg me-1"></i>
+                            Enregistrer
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+
+    <!-- ========================= -->
+    <!-- LOGO -->
+    <!-- ========================= -->
+
+    <div class="card shadow-sm mb-4">
+
+        <div class="card-header bg-body">
+            <h2 class="h6 mb-0">
+                <i class="bi bi-image me-2 text-primary"></i>
+                Logo
+            </h2>
+        </div>
+
+        <div class="card-body">
+
+            {% if company.logo %}
+
+                <div class="mb-3">
+                    <p class="small text-muted mb-2">
+                        Logo actuel
+                    </p>
+
+                    <div class="border rounded p-3 d-inline-block bg-body">
+                        <img
+                            src="{{ company.logo.url }}"
+                            alt="Logo de {{ company.name }}"
+                            class="img-fluid"
+                            style="max-height: 100px; max-width: 250px;"
+                        >
+                    </div>
+                </div>
+
+            {% endif %}
+
+
+            <form method="post" enctype="multipart/form-data">
+
+                {% csrf_token %}
+
+                <div class="mb-3">
+
+                    <label
+                        for="{{ logo_form.logo.id_for_label }}"
+                        class="form-label"
+                    >
+                        Sélectionner un logo
+                    </label>
+
+                    {{ logo_form.logo }}
+
+                    {% if logo_form.logo.errors %}
+                        <div class="invalid-feedback d-block">
+                            {{ logo_form.logo.errors }}
+                        </div>
+                    {% endif %}
+
+                </div>
+
+
+                <button
+                    type="submit"
+                    name="upload_logo"
+                    value="1"
+                    class="btn btn-outline-secondary"
+                >
+                    <i class="bi bi-upload me-1"></i>
+                    Mettre à jour le logo
+                </button>
+
+            </form>
+
+        </div>
+
+    </div>
+
+
+    <!-- ========================= -->
+    <!-- CACHET / SIGNATURE -->
+    <!-- ========================= -->
+
+    <div class="card shadow-sm mb-4">
+
+        <div class="card-header bg-body">
+            <h2 class="h6 mb-0">
+                <i class="bi bi-pen me-2 text-primary"></i>
+                Cachet / Signature
+            </h2>
+        </div>
+
+        <div class="card-body">
+
+            {% if company.stamp %}
+
+                <div class="mb-3">
+
+                    <p class="small text-muted mb-2">
+                        Cachet actuel
+                    </p>
+
+                    <div class="border rounded p-3 d-inline-block bg-body">
+
+                        <img
+                            src="{{ company.stamp.url }}"
+                            alt="Cachet de {{ company.name }}"
+                            class="img-fluid"
+                            style="max-height: 100px; max-width: 250px;"
+                        >
+
+                    </div>
+
+                </div>
+
+            {% endif %}
+
+
+            <form method="post" enctype="multipart/form-data">
+
+                {% csrf_token %}
+
+                <div class="mb-3">
+
+                    <label
+                        for="{{ stamp_form.stamp.id_for_label }}"
+                        class="form-label"
+                    >
+                        Sélectionner un cachet ou une signature
+                    </label>
+
+                    {{ stamp_form.stamp }}
+
+                    {% if stamp_form.stamp.errors %}
+                        <div class="invalid-feedback d-block">
+                            {{ stamp_form.stamp.errors }}
+                        </div>
+                    {% endif %}
+
+                </div>
+
+
+                <button
+                    type="submit"
+                    name="upload_stamp"
+                    value="1"
+                    class="btn btn-outline-secondary"
+                >
+                    <i class="bi bi-upload me-1"></i>
+                    Mettre à jour le cachet
+                </button>
+
+            </form>
+
+        </div>
+
+    </div>
+
+
+    <!-- ========================= -->
+    <!-- SUPPRESSION -->
+    <!-- ========================= -->
+
+    <div class="card border-danger shadow-sm mb-4">
+
+        <div class="card-header bg-danger-subtle text-danger-emphasis">
+            <h2 class="h6 mb-0">
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                Zone dangereuse
+            </h2>
+        </div>
+
+        <div class="card-body">
+
+            <p class="text-muted mb-3">
+                La suppression de l'entreprise est définitive.
+                Cette action doit être effectuée avec précaution.
+            </p>
+
+            <form
+                method="post"
+                action="{% url 'company_delete' company.id %}"
+                onsubmit="return confirm('Supprimer cette entreprise ?');"
+            >
+
+                {% csrf_token %}
+
+                <button
+                    type="submit"
+                    class="btn btn-danger"
+                >
+                    <i class="bi bi-trash me-1"></i>
+                    Supprimer l'entreprise
+                </button>
+
+            </form>
+
+        </div>
+
+    </div>
+
 </div>
 
-<div class="card">
-  <h2 style="font-size:15px; margin-top:0;">Logo</h2>
-  {% if company.logo %}<img src="{{ company.logo.url }}" alt="Logo" style="height:64px; margin-bottom:10px; display:block;">{% endif %}
-  <form method="post" enctype="multipart/form-data">
-    {% csrf_token %}
-    {{ logo_form.logo }}
-    <button type="submit" name="upload_logo" value="1" class="btn btn-outline mt-2">Mettre à jour le logo</button>
-  </form>
-</div>
-
-<div class="card">
-  <h2 style="font-size:15px; margin-top:0;">Cachet / Signature</h2>
-  {% if company.stamp %}<img src="{{ company.stamp.url }}" alt="Cachet" style="height:64px; margin-bottom:10px; display:block;">{% endif %}
-  <form method="post" enctype="multipart/form-data">
-    {% csrf_token %}
-    {{ stamp_form.stamp }}
-    <button type="submit" name="upload_stamp" value="1" class="btn btn-outline mt-2">Mettre à jour le cachet</button>
-  </form>
-</div>
-
-<form method="post" action="{% url 'company_delete' company.id %}" onsubmit="return confirm('Supprimer cette entreprise ?');">
-  {% csrf_token %}
-  <button type="submit" class="btn btn-danger">Supprimer l'entreprise</button>
-</form>
 {% endblock %}

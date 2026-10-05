@@ -1,278 +1,1243 @@
 {% extends "core/base.html" %}
+
 {% load core_extras %}
+
 {% block title %}Caisse - Facturier{% endblock %}
+
 {% block content %}
 
-{% if not company %}
-  <div class="alert alert-warning">
-    {% if is_admin %}Créez d'abord une entreprise (page « Entreprises ») pour utiliser la Caisse.
-    {% else %}Aucune entreprise associée à votre compte. Contactez votre administrateur.{% endif %}
-  </div>
-{% else %}
+<div class="container-fluid">
 
-{% if cash_session %}
-<div id="cash-session-data" data-planned-closed-at="{{ cash_session.planned_closed_at|date:'c' }}"></div>
-<form id="auto-close-form" method="post" action="{% url 'cash_session_close' %}" style="display:none;">
-  {% csrf_token %}
-</form>
-<div class="card mb-4" style="background:var(--brand-50); border-color:var(--brand-100);">
-  <div class="flex-between">
-    <span>Caisse ouverte depuis <strong>{{ cash_session.opened_at|date:"d/m/Y H:i" }}</strong> —
-      Fermeture prévue à <strong>{{ cash_session.planned_closed_at|date:"d/m/Y H:i" }}</strong></span>
-    <div class="flex gap-2">
-      <a href="{% url 'cash_session_extend' %}" class="btn btn-outline btn-sm">⏱ Prolonger</a>
-      <form method="post" action="{% url 'cash_session_close' %}" style="display:inline;">
-        {% csrf_token %}
-        <button type="submit" class="btn btn-danger btn-sm">Fermer maintenant</button>
-      </form>
-    </div>
-  </div>
-</div>
-{% endif %}
+  {% if not company %}
 
-<div class="card mb-4">
-  <div class="flex-between">
-    <div class="flex gap-2" style="align-items:center;">
-      {% if company.logo %}<img src="{{ company.logo.url }}" alt="Logo" style="height:44px; width:44px; object-fit:contain; border-radius:6px;">{% endif %}
-      <div>
-        <h1 style="font-size:16px; margin:0;">{{ company.name }}</h1>
-        <p class="text-muted" style="margin:0; font-size:12px;">{{ company.address }}</p>
-      </div>
-    </div>
-    <div class="text-right" style="font-size:13px;">
-      <p style="color:var(--brand-700); font-weight:600; margin:0 0 2px;">Vendu aujourd'hui : {{ revenue_today|floatformat:0 }} F CFA ({{ sales_count_today }} vente(s))</p>
-      <p class="text-muted" style="margin:0;">TVA applicable : {{ company.tva_rate|floatformat:0 }}%</p>
-    </div>
-  </div>
-</div>
-
-<div class="caisse-grid">
-  <div>
-    <!-- ===== PRODUITS ===== -->
-    <div class="search-box flex gap-2" style="align-items:center;">
-      <span class="icon">🔎</span>
-      <input type="text" id="product-search-input" placeholder="Rechercher un produit par désignation..." style="flex:1;">
-      <button type="button" id="reset-search-btn" class="btn btn-outline btn-sm">✕ Réinitialiser</button>
-    </div>
-
-    <div class="card">
-      <h2 style="font-size:14px; margin-top:0;">📦 Produits</h2>
-      <div class="table-wrap">
-      <table>
-        <thead><tr><th></th><th>Désignation</th><th>Quantité en stock</th><th>Prix unitaire</th><th>Ajouter</th></tr></thead>
-        <tbody>
-          {% for p in products %}
-          <tr data-product-row data-product-name="{{ p.name }}">
-            <td></td>
-            <td>{{ p.name }}</td>
-            <td style="{% if p.stock <= p.critical_threshold %}color:var(--red-600); font-weight:600;{% endif %}">{{ p.stock }}</td>
-            <td>{{ p.price|floatformat:0 }} F CFA</td>
-            <td>
-              {% if p.stock > 0 %}
-              <form method="post" class="flex gap-2" style="align-items:center;">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="add_product">
-                <input type="hidden" name="product_id" value="{{ p.id }}">
-                <input type="number" name="quantity" value="1" min="1" max="{{ p.stock }}" style="width:64px;">
-                <label style="display:flex; align-items:center; gap:4px; font-weight:400; margin:0;">
-                  <input type="checkbox" name="is_gift" style="width:auto;"> Offert
-                </label>
-                <button type="submit" class="btn btn-outline btn-sm">Ajouter</button>
-              </form>
-              {% else %}
-              <span class="badge badge-gray">Rupture</span>
-              {% endif %}
-            </td>
-          </tr>
-          {% empty %}
-          <tr><td colspan="5" class="text-muted" style="text-align:center;">Aucun produit.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      </div>
-
-      {% if products.paginator.num_pages > 1 %}
-      <div class="flex-between mt-4" style="font-size:13px;">
-        <span class="text-muted">Page {{ products.number }} / {{ products.paginator.num_pages }}</span>
-        <div class="flex gap-2">
-          {% if products.has_previous %}
-          <a href="?page={{ products.previous_page_number }}{% if query %}&q={{ query }}{% endif %}" class="btn btn-outline btn-sm">&larr; Précédent</a>
-          {% endif %}
-          {% if products.has_next %}
-          <a href="?page={{ products.next_page_number }}{% if query %}&q={{ query }}{% endif %}" class="btn btn-outline btn-sm">Suivant &rarr;</a>
-          {% endif %}
-        </div>
-      </div>
-      {% endif %}
-    </div>
-
-    <!-- ===== SERVICES ===== -->
-    <div class="card mt-4">
-      <h2 style="font-size:14px; margin-top:0;">🩺 Prestations (catalogue)</h2>
-      <div class="table-wrap">
-      <table>
-        <thead><tr><th>Désignation</th><th>Prix indicatif</th><th>Ajouter</th></tr></thead>
-        <tbody>
-          {% for s in services %}
-          <tr>
-            <td>{{ s.name }}</td>
-            <td>{{ s.default_price|floatformat:0 }} F CFA</td>
-            <td>
-              <form method="post" class="flex gap-2" style="align-items:center;">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="add_service">
-                <input type="hidden" name="service_id" value="{{ s.id }}">
-                <input type="number" name="price" value="{{ s.default_price|floatformat:0 }}" min="0" style="width:100px;" title="Prix (modifiable)">
-                <input type="number" name="quantity" value="1" min="1" style="width:60px;">
-                <button type="submit" class="btn btn-outline btn-sm">Ajouter</button>
-              </form>
-            </td>
-          </tr>
-          {% empty %}
-          <tr><td colspan="3" class="text-muted" style="text-align:center;">Aucune prestation dans le catalogue.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      </div>
-
-      {% if services.paginator.num_pages > 1 %}
-      <div class="flex-between mt-4" style="font-size:13px;">
-        <span class="text-muted">Page {{ services.number }} / {{ services.paginator.num_pages }}</span>
-        <div class="flex gap-2">
-          {% if services.has_previous %}
-          <a href="?spage={{ services.previous_page_number }}{% if query %}&q={{ query }}{% endif %}#services" class="btn btn-outline btn-sm">&larr; Précédent</a>
-          {% endif %}
-          {% if services.has_next %}
-          <a href="?spage={{ services.next_page_number }}{% if query %}&q={{ query }}{% endif %}#services" class="btn btn-outline btn-sm">Suivant &rarr;</a>
-          {% endif %}
-        </div>
-      </div>
-      {% endif %}
-    </div>
-
-    <div class="card mt-4">
-      <h2 style="font-size:14px; margin-top:0;">Prestation hors catalogue (ligne libre)</h2>
-      <form method="post" class="flex gap-2" style="align-items:flex-end; flex-wrap:wrap;">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="add_free_line">
-        <div class="field" style="margin:0; flex:2; min-width:200px;">
-          <label>Désignation</label>
-          <input type="text" name="label" placeholder="Ex : Consultation, Injection...">
-        </div>
-        <div class="field" style="margin:0; width:120px;">
-          <label>Prix (F CFA)</label>
-          <input type="number" name="price" min="0" placeholder="Ex : 5000">
-        </div>
-        <div class="field" style="margin:0; width:80px;">
-          <label>Quantité</label>
-          <input type="number" name="quantity" value="1" min="1">
-        </div>
-        <button type="submit" class="btn btn-outline">Ajouter</button>
-      </form>
-    </div>
-  </div>
-
-  <div>
-    <div class="card">
-      <h2 style="font-size:15px; margin-top:0;">🛒 Récapitulatif (facture unique)</h2>
-
-      {% if not cart_lines %}
-        <p class="text-muted">Aucun article sélectionné.</p>
+    <div class="alert alert-warning">
+      {% if is_admin %}
+        Créez d'abord une entreprise
+        (page « Entreprises ») pour utiliser la Caisse.
       {% else %}
-        {% for line in cart_lines %}
-        <div style="margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid var(--gray-100);">
-          <div class="flex-between" style="font-size:13px;">
-            <span>
-              {% if line.kind == "product" %}<span class="badge badge-gray" style="font-size:9px;">Produit</span>
-              {% else %}<span class="badge badge-dark" style="font-size:9px;">Prestation</span>{% endif %}
-              {{ line.label }} × {{ line.quantity }}{% if line.is_gift %} <strong>(Offert)</strong>{% endif %}
-            </span>
-            <div class="flex gap-2" style="align-items:center;">
-              <span>{{ line.line_total|floatformat:0 }} F CFA</span>
-              <form method="post">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="remove_line">
-                <input type="hidden" name="line_id" value="{{ line.line_id }}">
-                <button type="submit" class="btn btn-danger btn-sm" style="padding:2px 8px;">✕</button>
-              </form>
-            </div>
-          </div>
-          {% if not line.is_gift %}
-          <form method="post" class="flex gap-2 mt-2" style="align-items:center;">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="update_line_discount">
-            <input type="hidden" name="line_id" value="{{ line.line_id }}">
-            <label style="font-weight:400; margin:0; font-size:12px; color:var(--gray-500);">Remise :</label>
-            <input type="number" name="discount_amount" value="{{ line.discount|default:0 }}" min="0" max="{{ line.raw_total }}" style="width:100px;">
-            <button type="submit" class="btn btn-outline btn-sm">Appliquer</button>
-          </form>
-          {% endif %}
-        </div>
-        {% endfor %}
-      {% endif %}
-
-      <form method="post" id="validate-sale-form" style="margin-top:14px; border-top:1px solid var(--gray-100); padding-top:14px;">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="validate_sale">
-        <div id="caisse-calc-data" data-subtotal="{{ sub_total }}" data-tvarate="{{ company.tva_rate }}"></div>
-        
-        <div class="field"><label>Nom du client (optionnel)</label><input type="text" name="client_name" value="{{ client_name_value|default:'' }}"></div>
-        <div class="field"><label>Téléphone du client (optionnel)</label><input type="text" name="client_phone" value="{{ client_phone_value|default:'' }}"></div>
-        <div class="field"><label>Notes (optionnel)</label><textarea name="notes" rows="2">{{ notes_value|default:'' }}</textarea></div>
-
-        <div class="field">
-          <label>Réduction sur le total net</label>
-          <div class="flex gap-2">
-            <select name="discount_type" id="discount-type-select" style="width:auto;">
-              <option value="NONE" {% if discount_type == "NONE" %}selected{% endif %}>Aucune</option>
-              <option value="PERCENTAGE" {% if discount_type == "PERCENTAGE" %}selected{% endif %}>Pourcentage (%)</option>
-              <option value="AMOUNT" {% if discount_type == "AMOUNT" %}selected{% endif %}>Montant fixe (F CFA)</option>
-            </select>
-            <input type="number" name="discount_value" id="discount-value-field" value="{{ discount_value|default:0 }}"
-              style="{% if discount_type == 'NONE' %}display:none;{% endif %}">
-          </div>
-        </div>
-
-        <div style="font-size:13px; margin:10px 0;">
-          <div class="flex-between"><span>Sous-total</span><span id="display-subtotal-amount">{{ sub_total|floatformat:0 }} F CFA</span></div>
-          <div class="flex-between" id="display-discount-row" style="color:var(--red-600); {% if discount_amount <= 0 %}display:none;{% endif %}">
-            <span>Réduction</span><span id="display-discount-amount">- {{ discount_amount|floatformat:0 }} F CFA</span>
-          </div>
-          <div class="flex-between"><span>TVA ({{ company.tva_rate|floatformat:0 }}%)</span><span id="display-tva-amount">{{ tva_amount|floatformat:0 }} F CFA</span></div>
-          <div class="flex-between" style="font-weight:700; font-size:15px; border-top:1px solid var(--gray-100); padding-top:6px; margin-top:6px;">
-            <span>Total Net</span><span id="display-total-amount">{{ total|floatformat:0 }} F CFA</span>
-          </div>
-        </div>
-
-        <div class="field" id="payment-section">
-          <label>Mode(s) de paiement</label>
-          {% for value, display in payment_methods %}
-          <div class="flex gap-2 mt-2" style="align-items:center;">
-            <label style="display:flex; align-items:center; gap:6px; font-weight:400; margin:0; flex:1;">
-              <input type="checkbox" name="payment_method" value="{{ value }}" class="payment-method-checkbox" style="width:auto;" {% if value in selected_payments %}checked{% endif %}>
-              {{ display }}
-            </label>
-            <input type="number" name="payment_amount_{{ value }}" class="payment-amount-input" data-method="{{ value }}" placeholder="Montant"
-              value="{% if value in selected_payments %}{{ selected_payments|get_item:value }}{% endif %}"
-              style="width:120px; {% if value in selected_payments %}display:block;{% else %}display:none;{% endif %}">
-          </div>
-          {% endfor %}
-        </div>
-
-        <button type="submit" class="btn btn-primary mt-4" style="width:100%; justify-content:center;" {% if not cart_lines %}disabled{% endif %}>
-          Valider la Vente
-        </button>
-      </form>
-
-      {% if cart_lines %}
-      <form method="post" id="clear-cart-form" class="mt-2">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="clear_cart">
-        <button type="submit" class="btn btn-outline btn-sm" style="width:100%; justify-content:center;">Vider le panier</button>
-      </form>
+        Aucune entreprise associée à votre compte.
+        Contactez votre administrateur.
       {% endif %}
     </div>
-  </div>
+
+  {% else %}
+
+
+    <!-- ========================================================= -->
+    <!-- CAISSE OUVERTE -->
+    <!-- ========================================================= -->
+
+    {% if cash_session %}
+
+      <div
+        id="cash-session-data"
+        data-planned-closed-at="{{ cash_session.planned_closed_at|date:'c' }}"
+      ></div>
+
+      <form
+        id="auto-close-form"
+        method="post"
+        action="{% url 'cash_session_close' %}"
+        class="d-none"
+      >
+        {% csrf_token %}
+      </form>
+
+
+      <div class="card shadow-sm mb-4 border-warning">
+
+        <div class="card-body">
+
+          <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+
+            <div>
+
+              <div class="small">
+
+                Caisse ouverte depuis
+
+                <strong>
+                  {{ cash_session.opened_at|date:"d/m/Y H:i" }}
+                </strong>
+
+                —
+
+                Fermeture prévue à
+
+                <strong>
+                  {{ cash_session.planned_closed_at|date:"d/m/Y H:i" }}
+                </strong>
+
+              </div>
+
+            </div>
+
+
+            <div class="d-flex flex-wrap gap-2">
+
+              <a
+                href="{% url 'cash_session_extend' %}"
+                class="btn btn-outline-secondary btn-sm"
+              >
+                ⏱ Prolonger
+              </a>
+
+
+              <form
+                method="post"
+                action="{% url 'cash_session_close' %}"
+                class="d-inline"
+              >
+
+                {% csrf_token %}
+
+                <button
+                  type="submit"
+                  class="btn btn-danger btn-sm"
+                >
+                  Fermer maintenant
+                </button>
+
+              </form>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    {% endif %}
+
+
+    <!-- ========================================================= -->
+    <!-- INFORMATIONS ENTREPRISE -->
+    <!-- ========================================================= -->
+
+    <div class="card shadow-sm mb-4">
+
+      <div class="card-body">
+
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+
+          <!-- Entreprise -->
+          <div class="d-flex align-items-center gap-3">
+
+            {% if company.logo %}
+
+              <img
+                src="{{ company.logo.url }}"
+                alt="Logo"
+                class="rounded"
+                style="height:44px; width:44px; object-fit:contain;"
+              >
+
+            {% endif %}
+
+
+            <div>
+
+              <h1 class="h6 mb-1">
+                {{ company.name }}
+              </h1>
+
+              <p class="text-muted small mb-0">
+                {{ company.address }}
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <!-- Statistiques -->
+          <div class="text-md-end">
+
+            <p class="mb-1 small fw-semibold text-primary">
+
+              Vendu aujourd'hui :
+              {{ revenue_today|floatformat:0 }}
+              F CFA
+
+              <span class="text-muted fw-normal">
+                ({{ sales_count_today }} vente(s))
+              </span>
+
+            </p>
+
+            <p class="text-muted small mb-0">
+
+              TVA applicable :
+              {{ company.tva_rate|floatformat:0 }}%
+
+            </p>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <!-- ========================================================= -->
+    <!-- CONTENU PRINCIPAL -->
+    <!-- ========================================================= -->
+
+    <div class="row g-4">
+
+      <!-- ======================================================= -->
+      <!-- COLONNE PRODUITS / SERVICES -->
+      <!-- ======================================================= -->
+
+      <div class="col-12 col-xl-7">
+
+
+        <!-- ===================================================== -->
+        <!-- RECHERCHE PRODUITS -->
+        <!-- ===================================================== -->
+
+        <form
+          method="get"
+          class="row g-2 mb-3"
+        >
+
+          <div class="col">
+
+            <div class="input-group">
+
+              <span class="input-group-text">
+                <i class="bi bi-search"></i>
+              </span>
+
+              <input
+                type="text"
+                name="q"
+                value="{{ query }}"
+                placeholder="Rechercher un produit par désignation..."
+                class="form-control"
+              >
+
+            </div>
+
+          </div>
+
+
+          <div class="col-auto">
+
+            <button
+              type="submit"
+              class="btn btn-primary"
+            >
+              <i class="bi bi-search"></i>
+              <span class="d-none d-sm-inline">
+                Rechercher
+              </span>
+            </button>
+
+          </div>
+
+
+          {% if query %}
+
+            <div class="col-auto">
+
+              <a
+                href="{% url 'caisse' %}"
+                class="btn btn-outline-secondary"
+              >
+                ✕
+              </a>
+
+            </div>
+
+          {% endif %}
+
+        </form>
+
+
+        <!-- ===================================================== -->
+        <!-- PRODUITS -->
+        <!-- ===================================================== -->
+
+        <div class="card shadow-sm">
+
+          <div class="card-body">
+
+            <h2 class="h6 mb-3">
+              📦 Produits
+            </h2>
+
+
+            <div class="table-responsive">
+
+              <table class="table table-hover align-middle mb-0">
+
+                <thead>
+
+                  <tr>
+
+                    <th>Désignation</th>
+
+                    <th>Stock</th>
+
+                    <th>Prix unitaire</th>
+
+                    <th>Ajouter</th>
+
+                  </tr>
+
+                </thead>
+
+
+                <tbody>
+
+                  {% for p in products %}
+
+                    <tr
+                      data-product-row
+                      data-product-name="{{ p.name }}"
+                    >
+
+                      <td>
+                        {{ p.name }}
+                      </td>
+
+
+                      <td>
+
+                        <span
+                          {% if p.stock <= p.critical_threshold %}
+                            class="text-danger fw-semibold"
+                          {% endif %}
+                        >
+                          {{ p.stock }}
+                        </span>
+
+                      </td>
+
+
+                      <td class="text-nowrap">
+
+                        {{ p.price|floatformat:0 }}
+                        F CFA
+
+                      </td>
+
+
+                      <td>
+
+                        {% if p.stock > 0 %}
+
+                          <form
+                            method="post"
+                            class="d-flex flex-wrap align-items-center gap-2"
+                          >
+
+                            {% csrf_token %}
+
+                            <input
+                              type="hidden"
+                              name="action"
+                              value="add_product"
+                            >
+
+                            <input
+                              type="hidden"
+                              name="product_id"
+                              value="{{ p.id }}"
+                            >
+
+
+                            <input
+                              type="number"
+                              name="quantity"
+                              value="1"
+                              min="1"
+                              max="{{ p.stock }}"
+                              class="form-control form-control-sm"
+                              style="width:70px;"
+                            >
+
+
+                            <div class="form-check mb-0">
+
+                              <input
+                                type="checkbox"
+                                name="is_gift"
+                                class="form-check-input"
+                                id="gift-{{ p.id }}"
+                              >
+
+                              <label
+                                class="form-check-label small"
+                                for="gift-{{ p.id }}"
+                              >
+                                Offert
+                              </label>
+
+                            </div>
+
+
+                            <button
+                              type="submit"
+                              class="btn btn-outline-secondary btn-sm"
+                            >
+                              Ajouter
+                            </button>
+
+                          </form>
+
+                        {% else %}
+
+                          <span class="badge bg-secondary">
+                            Rupture
+                          </span>
+
+                        {% endif %}
+
+                      </td>
+
+                    </tr>
+
+
+                  {% empty %}
+
+                    <tr>
+
+                      <td
+                        colspan="4"
+                        class="text-center text-muted py-4"
+                      >
+                        Aucun produit.
+
+                      </td>
+
+                    </tr>
+
+                  {% endfor %}
+
+                </tbody>
+
+              </table>
+
+            </div>
+
+
+            <!-- Pagination produits -->
+            {% if products.paginator.num_pages > 1 %}
+
+              <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mt-4">
+
+                <span class="text-muted small">
+
+                  Page {{ products.number }}
+                  /
+                  {{ products.paginator.num_pages }}
+
+                </span>
+
+
+                <div class="d-flex gap-2">
+
+                  {% if products.has_previous %}
+
+                    <a
+                      href="?page={{ products.previous_page_number }}{% if query %}&q={{ query }}{% endif %}"
+                      class="btn btn-outline-secondary btn-sm"
+                    >
+                      &larr; Précédent
+                    </a>
+
+                  {% endif %}
+
+
+                  {% if products.has_next %}
+
+                    <a
+                      href="?page={{ products.next_page_number }}{% if query %}&q={{ query }}{% endif %}"
+                      class="btn btn-outline-secondary btn-sm"
+                    >
+                      Suivant &rarr;
+                    </a>
+
+                  {% endif %}
+
+                </div>
+
+              </div>
+
+            {% endif %}
+
+          </div>
+
+        </div>
+
+
+        <!-- ===================================================== -->
+        <!-- SERVICES -->
+        <!-- ===================================================== -->
+
+        <div class="card shadow-sm mt-4">
+
+          <div class="card-body">
+
+            <h2 class="h6 mb-3">
+              🩺 Prestations (catalogue)
+            </h2>
+
+
+            <div class="table-responsive">
+
+              <table class="table table-hover align-middle mb-0">
+
+                <thead>
+
+                  <tr>
+
+                    <th>Désignation</th>
+
+                    <th>Prix indicatif</th>
+
+                    <th>Ajouter</th>
+
+                  </tr>
+
+                </thead>
+
+
+                <tbody>
+
+                  {% for s in services %}
+
+                    <tr>
+
+                      <td>
+                        {{ s.name }}
+                      </td>
+
+
+                      <td class="text-nowrap">
+
+                        {{ s.default_price|floatformat:0 }}
+                        F CFA
+
+                      </td>
+
+
+                      <td>
+
+                        <form
+                          method="post"
+                          class="d-flex flex-wrap align-items-center gap-2"
+                        >
+
+                          {% csrf_token %}
+
+                          <input
+                            type="hidden"
+                            name="action"
+                            value="add_service"
+                          >
+
+                          <input
+                            type="hidden"
+                            name="service_id"
+                            value="{{ s.id }}"
+                          >
+
+
+                          <input
+                            type="number"
+                            name="price"
+                            value="{{ s.default_price|floatformat:0 }}"
+                            min="0"
+                            class="form-control form-control-sm"
+                            style="width:110px;"
+                            title="Prix modifiable"
+                          >
+
+
+                          <input
+                            type="number"
+                            name="quantity"
+                            value="1"
+                            min="1"
+                            class="form-control form-control-sm"
+                            style="width:70px;"
+                          >
+
+
+                          <button
+                            type="submit"
+                            class="btn btn-outline-secondary btn-sm"
+                          >
+                            Ajouter
+                          </button>
+
+                        </form>
+
+                      </td>
+
+                    </tr>
+
+
+                  {% empty %}
+
+                    <tr>
+
+                      <td
+                        colspan="3"
+                        class="text-center text-muted py-4"
+                      >
+                        Aucune prestation dans le catalogue.
+
+                      </td>
+
+                    </tr>
+
+                  {% endfor %}
+
+                </tbody>
+
+              </table>
+
+            </div>
+
+
+            <!-- Pagination services -->
+            {% if services.paginator.num_pages > 1 %}
+
+              <div
+                id="services"
+                class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mt-4"
+              >
+
+                <span class="text-muted small">
+
+                  Page {{ services.number }}
+                  /
+                  {{ services.paginator.num_pages }}
+
+                </span>
+
+
+                <div class="d-flex gap-2">
+
+                  {% if services.has_previous %}
+
+                    <a
+                      href="?spage={{ services.previous_page_number }}{% if query %}&q={{ query }}{% endif %}#services"
+                      class="btn btn-outline-secondary btn-sm"
+                    >
+                      &larr; Précédent
+                    </a>
+
+                  {% endif %}
+
+
+                  {% if services.has_next %}
+
+                    <a
+                      href="?spage={{ services.next_page_number }}{% if query %}&q={{ query }}{% endif %}#services"
+                      class="btn btn-outline-secondary btn-sm"
+                    >
+                      Suivant &rarr;
+                    </a>
+
+                  {% endif %}
+
+                </div>
+
+              </div>
+
+            {% endif %}
+
+          </div>
+
+        </div>
+
+
+        <!-- ===================================================== -->
+        <!-- PRESTATION HORS CATALOGUE -->
+        <!-- ===================================================== -->
+
+        <div class="card shadow-sm mt-4">
+
+          <div class="card-body">
+
+            <h2 class="h6 mb-3">
+              Prestation hors catalogue
+            </h2>
+
+
+            <form method="post">
+
+              {% csrf_token %}
+
+              <input
+                type="hidden"
+                name="action"
+                value="add_free_line"
+              >
+
+
+              <div class="row g-3 align-items-end">
+
+                <div class="col-12 col-md-6">
+
+                  <label class="form-label">
+                    Désignation
+                  </label>
+
+                  <input
+                    type="text"
+                    name="label"
+                    placeholder="Ex : Consultation, Injection..."
+                    class="form-control"
+                  >
+
+                </div>
+
+
+                <div class="col-6 col-md-3">
+
+                  <label class="form-label">
+                    Prix (F CFA)
+                  </label>
+
+                  <input
+                    type="number"
+                    name="price"
+                    min="0"
+                    placeholder="Ex : 5000"
+                    class="form-control"
+                  >
+
+                </div>
+
+
+                <div class="col-6 col-md-3">
+
+                  <label class="form-label">
+                    Quantité
+                  </label>
+
+                  <input
+                    type="number"
+                    name="quantity"
+                    value="1"
+                    min="1"
+                    class="form-control"
+                  >
+
+                </div>
+
+
+                <div class="col-12">
+
+                  <button
+                    type="submit"
+                    class="btn btn-outline-secondary"
+                  >
+                    Ajouter
+                  </button>
+
+                </div>
+
+              </div>
+
+            </form>
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <!-- ======================================================= -->
+      <!-- COLONNE PANIER / FACTURE -->
+      <!-- ======================================================= -->
+
+      <div class="col-12 col-xl-5">
+
+        <div class="card shadow-sm">
+
+          <div class="card-body">
+
+            <h2 class="h6 mb-4">
+              🛒 Récapitulatif (facture unique)
+            </h2>
+
+
+            {% if not cart_lines %}
+
+              <p class="text-muted">
+                Aucun article sélectionné.
+              </p>
+
+            {% else %}
+
+
+              <!-- Lignes panier -->
+              {% for line in cart_lines %}
+
+                <div class="border-bottom pb-3 mb-3">
+
+                  <div class="d-flex justify-content-between align-items-start gap-2">
+
+                    <div class="small">
+
+                      {% if line.kind == "product" %}
+
+                        <span class="badge bg-secondary">
+                          Produit
+                        </span>
+
+                      {% else %}
+
+                        <span class="badge bg-dark">
+                          Prestation
+                        </span>
+
+                      {% endif %}
+
+                      {{ line.label }}
+                      ×
+                      {{ line.quantity }}
+
+                      {% if line.is_gift %}
+
+                        <strong>
+                          (Offert)
+                        </strong>
+
+                      {% endif %}
+
+                    </div>
+
+
+                    <div class="d-flex align-items-center gap-2">
+
+                      <span class="small text-nowrap">
+
+                        {{ line.line_total|floatformat:0 }}
+                        F CFA
+
+                      </span>
+
+
+                      <form method="post">
+
+                        {% csrf_token %}
+
+                        <input
+                          type="hidden"
+                          name="action"
+                          value="remove_line"
+                        >
+
+                        <input
+                          type="hidden"
+                          name="line_id"
+                          value="{{ line.line_id }}"
+                        >
+
+                        <button
+                          type="submit"
+                          class="btn btn-danger btn-sm"
+                        >
+                          ✕
+                        </button>
+
+                      </form>
+
+                    </div>
+
+                  </div>
+
+
+                  {% if not line.is_gift %}
+
+                    <form
+                      method="post"
+                      class="row g-2 align-items-center mt-2"
+                    >
+
+                      {% csrf_token %}
+
+                      <input
+                        type="hidden"
+                        name="action"
+                        value="update_line_discount"
+                      >
+
+                      <input
+                        type="hidden"
+                        name="line_id"
+                        value="{{ line.line_id }}"
+                      >
+
+
+                      <div class="col-auto">
+
+                        <label class="form-label small mb-0">
+                          Remise
+                        </label>
+
+                      </div>
+
+
+                      <div class="col">
+
+                        <input
+                          type="number"
+                          name="discount_amount"
+                          value="{{ line.discount|default:0 }}"
+                          min="0"
+                          max="{{ line.raw_total }}"
+                          class="form-control form-control-sm"
+                        >
+
+                      </div>
+
+
+                      <div class="col-auto">
+
+                        <button
+                          type="submit"
+                          class="btn btn-outline-secondary btn-sm"
+                        >
+                          Appliquer
+                        </button>
+
+                      </div>
+
+                    </form>
+
+                  {% endif %}
+
+                </div>
+
+              {% endfor %}
+
+            {% endif %}
+
+
+            <!-- ================================================= -->
+            <!-- VALIDATION VENTE -->
+            <!-- ================================================= -->
+
+            <form
+              method="post"
+              id="validate-sale-form"
+              class="border-top pt-3 mt-3"
+            >
+
+              {% csrf_token %}
+
+              <input
+                type="hidden"
+                name="action"
+                value="validate_sale"
+              >
+
+
+              <div
+                id="caisse-calc-data"
+                data-subtotal="{{ sub_total }}"
+                data-tvarate="{{ company.tva_rate }}"
+              ></div>
+
+
+              <!-- Client -->
+              <div class="mb-3">
+
+                <label class="form-label">
+                  Nom du client (optionnel)
+                </label>
+
+                <input
+                  type="text"
+                  name="client_name"
+                  value="{{ client_name_value|default:'' }}"
+                  class="form-control"
+                >
+
+              </div>
+
+
+              <!-- Téléphone -->
+              <div class="mb-3">
+
+                <label class="form-label">
+                  Téléphone du client (optionnel)
+                </label>
+
+                <input
+                  type="text"
+                  name="client_phone"
+                  value="{{ client_phone_value|default:'' }}"
+                  class="form-control"
+                >
+
+              </div>
+
+
+              <!-- Notes -->
+              <div class="mb-3">
+
+                <label class="form-label">
+                  Notes (optionnel)
+                </label>
+
+                <textarea
+                  name="notes"
+                  rows="2"
+                  class="form-control"
+                >{{ notes_value|default:'' }}</textarea>
+
+              </div>
+
+
+              <!-- Réduction -->
+              <div class="mb-3">
+
+                <label class="form-label">
+                  Réduction sur le total net
+                </label>
+
+
+                <div class="row g-2">
+
+                  <div class="col-12 col-sm-6">
+
+                    <select
+                      name="discount_type"
+                      id="discount-type-select"
+                      class="form-select"
+                    >
+
+                      <option
+                        value="NONE"
+                        {% if discount_type == "NONE" %}selected{% endif %}
+                      >
+                        Aucune
+                      </option>
+
+                      <option
+                        value="PERCENTAGE"
+                        {% if discount_type == "PERCENTAGE" %}selected{% endif %}
+                      >
+                        Pourcentage (%)
+                      </option>
+
+                      <option
+                        value="AMOUNT"
+                        {% if discount_type == "AMOUNT" %}selected{% endif %}
+                      >
+                        Montant fixe (F CFA)
+                      </option>
+
+                    </select>
+
+                  </div>
+
+
+                  <div class="col-12 col-sm-6">
+
+                    <input
+                      type="number"
+                      name="discount_value"
+                      id="discount-value-field"
+                      value="{{ discount_value|default:0 }}"
+                      class="form-control"
+                      {% if discount_type == "NONE" %}
+                        style="display:none;"
+                      {% endif %}
+                    >
+
+                  </div>
+
+                </div>
+
+              </div>
+
+
+              <!-- Totaux -->
+              <div class="small mb-3">
+
+                <div class="d-flex justify-content-between mb-1">
+
+                  <span>
+                    Sous-total
+                  </span>
+
+                  <span id="display-subtotal-amount">
+                    {{ sub_total|floatformat:0 }} F CFA
+                  </span>
+
+                </div>
+
+
+                <div
+                  id="display-discount-row"
+                  class="d-flex justify-content-between mb-1 text-danger"
+                  {% if discount_amount <= 0 %}
+                    style="display:none;"
+                  {% endif %}
+                >
+
+                  <span>
+                    Réduction
+                  </span>
+
+                  <span id="display-discount-amount">
+                    - {{ discount_amount|floatformat:0 }} F CFA
+                  </span>
+
+                </div>
+
+
+                <div class="d-flex justify-content-between mb-1">
+
+                  <span>
+                    TVA ({{ company.tva_rate|floatformat:0 }}%)
+                  </span>
+
+                  <span id="display-tva-amount">
+                    {{ tva_amount|floatformat:0 }} F CFA
+                  </span>
+
+                </div>
+
+
+                <div class="d-flex justify-content-between border-top pt-2 mt-2 fw-bold fs-6">
+
+                  <span>
+                    Total Net
+                  </span>
+
+                  <span id="display-total-amount">
+                    {{ total|floatformat:0 }} F CFA
+                  </span>
+
+                </div>
+
+              </div>
+
+
+              <!-- ================================================= -->
+              <!-- PAIEMENT -->
+              <!-- ================================================= -->
+
+              <div
+                class="mb-3"
+                id="payment-section"
+              >
+
+                <label class="form-label">
+                  Mode(s) de paiement
+                </label>
+
+
+                {% for value, display in payment_methods %}
+
+                  <div class="d-flex align-items-center gap-2 mb-2">
+
+                    <div class="form-check flex-grow-1">
+
+                      <input
+                        type="checkbox"
+                        name="payment_method"
+                        value="{{ value }}"
+                        class="form-check-input payment-method-checkbox"
+                        id="payment-{{ value }}"
+                        {% if value in selected_payments %}
+                          checked
+                        {% endif %}
+                      >
+
+                      <label
+                        class="form-check-label"
+                        for="payment-{{ value }}"
+                      >
+                        {{ display }}
+                      </label>
+
+                    </div>
+
+
+                    <input
+                      type="number"
+                      name="payment_amount_{{ value }}"
+                      class="form-control form-control-sm payment-amount-input"
+                      data-method="{{ value }}"
+                      placeholder="Montant"
+                      value="{% if value in selected_payments %}{{ selected_payments|get_item:value }}{% endif %}"
+                      style="max-width:130px; {% if value in selected_payments %}display:block;{% else %}display:none;{% endif %}"
+                    >
+
+                  </div>
+
+                {% endfor %}
+
+              </div>
+
+
+              <!-- Valider -->
+              <button
+                type="submit"
+                class="btn btn-primary w-100 mt-3"
+                {% if not cart_lines %}disabled{% endif %}
+              >
+                Valider la vente
+              </button>
+
+            </form>
+
+
+            <!-- Vider panier -->
+            {% if cart_lines %}
+
+              <form
+                method="post"
+                id="clear-cart-form"
+                class="mt-2"
+              >
+
+                {% csrf_token %}
+
+                <input
+                  type="hidden"
+                  name="action"
+                  value="clear_cart"
+                >
+
+                <button
+                  type="submit"
+                  class="btn btn-outline-secondary btn-sm w-100"
+                >
+                  Vider le panier
+                </button>
+
+              </form>
+
+            {% endif %}
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  {% endif %}
+
 </div>
-{% endif %}
+
 {% endblock %}
