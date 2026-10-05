@@ -1,8 +1,5 @@
 # Synchronisation "local -> cloud" : envoie les données créées/modifiées
-# depuis la dernière synchronisation réussie vers le serveur en ligne
-# (accessible au propriétaire), dès qu'une connexion internet est
-# disponible. Ne synchronise JAMAIS de mots de passe ni de comptes
-# utilisateurs — uniquement les données d'activité.
+# depuis la dernière synchronisation réussie vers le serveur en ligne.
 
 import json
 import urllib.request
@@ -11,9 +8,13 @@ import urllib.error
 from django.conf import settings
 from django.utils import timezone
 
-from .models import Approvisionnement, Company, Depense, Product, Sale, Service, SyncState
+from .models import (
+    Approvisionnement, Company, Depense, Employee, Product, Sale, Service, SyncState, User
+)
 
-SYNC_KEYS = ["companies", "products", "services", "sales", "depenses", "approvisionnements"]
+SYNC_KEYS = [
+    "companies", "users", "employees", "products", "services", "sales", "depenses", "approvisionnements"
+]
 
 
 def _get_last_synced(key):
@@ -33,6 +34,28 @@ def _serialize_company(c):
     return {
         "id": str(c.id), "name": c.name, "address": c.address, "phone": c.phone,
         "email": c.email, "website": c.website, "tva_rate": c.tva_rate,
+    }
+
+
+def _serialize_user(u):
+    return {
+        "id": str(u.id),
+        "full_name": u.full_name,
+        "phone_number": u.phone_number,
+        "role": u.role,
+        "company_id": str(u.company_id) if u.company_id else None,
+        "is_active": u.is_active,
+    }
+
+
+def _serialize_employee(e):
+    return {
+        "id": str(e.id),
+        "company_id": str(e.company_id),
+        "full_name": e.full_name,
+        "role": e.role,
+        "phone": e.phone,
+        "is_active": e.is_active,
     }
 
 
@@ -79,7 +102,7 @@ def _serialize_depense(d):
     return {
         "id": str(d.id), "company_id": str(d.company_id), "date": d.date.isoformat(),
         "type_depense": d.type_depense, "label": d.label, "amount": d.amount,
-        "comment": d.comment,
+        "comment": d.comment, "employee_id": str(d.employee_id) if d.employee_id else None,
     }
 
 
@@ -101,6 +124,18 @@ def collect_pending_payload():
     if since:
         qs = qs.filter(updated_at__gt=since)
     payload["companies"] = [_serialize_company(c) for c in qs]
+
+    since = _get_last_synced("users")
+    qs = User.objects.all()
+    if since:
+        qs = qs.filter(updated_at__gt=since)
+    payload["users"] = [_serialize_user(u) for u in qs]
+
+    since = _get_last_synced("employees")
+    qs = Employee.objects.all()
+    if since:
+        qs = qs.filter(created_at__gt=since)  # Utilise created_at existant sur Employee
+    payload["employees"] = [_serialize_employee(e) for e in qs]
 
     since = _get_last_synced("products")
     qs = Product.objects.all()
@@ -136,9 +171,6 @@ def collect_pending_payload():
 
 
 def push_to_cloud():
-    """Envoie les données en attente vers le serveur en ligne. Ne lève
-    jamais d'exception vers l'appelant : une absence de connexion internet
-    doit simplement reporter la tentative au prochain cycle."""
     if not settings.CLOUD_SYNC_URL or not settings.SYNC_TOKEN:
         return False, "Synchronisation non configurée (CLOUD_SYNC_URL / SYNC_TOKEN manquants)."
 

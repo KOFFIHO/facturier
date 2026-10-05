@@ -1396,9 +1396,7 @@ def approvisionnements_list_view(request):
 
 @csrf_exempt
 def sync_receive_view(request):
-    """Reçoit les données envoyées par l'instance locale (clinique) et les
-    intègre dans la base du serveur en ligne. Protégé par un jeton partagé
-    (X-Sync-Token). Ne reçoit jamais de mots de passe ni de comptes."""
+    """Reçoit les données envoyées par l'instance locale et les intègre dans la base du serveur en ligne."""
     if request.method != "POST":
         return JsonResponse({"message": "Méthode non autorisée."}, status=405)
 
@@ -1417,6 +1415,27 @@ def sync_receive_view(request):
             "email": c.get("email"), "website": c.get("website"), "tva_rate": c.get("tva_rate", 18),
         })
 
+    for u in payload.get("users", []):
+        user, created = User.objects.update_or_create(id=u["id"], defaults={
+            "full_name": u["full_name"],
+            "phone_number": u["phone_number"],
+            "role": u.get("role", "SELLER"),
+            "company_id": u.get("company_id"),
+            "is_active": u.get("is_active", True),
+        })
+        if created:
+            user.set_unusable_password()
+            user.save(update_fields=["password"])
+
+    for e in payload.get("employees", []):
+        Employee.objects.update_or_create(id=e["id"], defaults={
+            "company_id": e["company_id"],
+            "full_name": e["full_name"],
+            "role": e.get("role", "EMPLOYEE"),
+            "phone": e.get("phone"),
+            "is_active": e.get("is_active", True),
+        })
+
     for p in payload.get("products", []):
         Product.objects.update_or_create(id=p["id"], defaults={
             "company_id": p["company_id"], "name": p["name"], "description": p.get("description"),
@@ -1433,6 +1452,7 @@ def sync_receive_view(request):
         Depense.objects.update_or_create(id=d["id"], defaults={
             "company_id": d["company_id"], "date": d["date"], "type_depense": d["type_depense"],
             "label": d["label"], "amount": d["amount"], "comment": d.get("comment"),
+            "employee_id": d.get("employee_id"),
         })
 
     for a in payload.get("approvisionnements", []):
