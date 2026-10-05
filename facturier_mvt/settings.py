@@ -77,7 +77,7 @@ USE_I18N = True
 USE_TZ = True
 
 # --- Fichiers statiques (CSS, JS) ---
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "core" / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
