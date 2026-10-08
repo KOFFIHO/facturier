@@ -1,6 +1,12 @@
 # Formulaires Django (validation + rendu des champs HTML).
 
+import math
+import zipfile
+
 from django import forms
+from django.conf import settings
+from django.contrib.auth.password_validation import validate_password
+from django.core.files.uploadedfile import UploadedFile
 from django.core.validators import RegexValidator
 from datetime import date, timedelta
 from django.db.models import Sum
@@ -27,6 +33,18 @@ def phone_number_field(label="Numéro de téléphone"):
             "placeholder": "0700000000",
         }),
     )
+
+
+def _validate_image_upload(uploaded):
+    """Logo / cachet : taille limitée et formats PNG, JPEG ou WEBP uniquement."""
+    if not isinstance(uploaded, UploadedFile):
+        return uploaded
+    if uploaded.size > settings.MAX_UPLOAD_SIZE_BYTES:
+        raise forms.ValidationError("Image trop volumineuse (5 Mo maximum).")
+    image_format = getattr(getattr(uploaded, "image", None), "format", None)
+    if image_format and image_format.upper() not in ("PNG", "JPEG", "WEBP"):
+        raise forms.ValidationError("Formats acceptés : PNG, JPEG ou WEBP.")
+    return uploaded
 
 
 class BootstrapFormMixin:
@@ -93,11 +111,17 @@ class CompanyLogoForm(BootstrapFormMixin, forms.ModelForm):
         model = Company
         fields = ["logo"]
 
+    def clean_logo(self):
+        return _validate_image_upload(self.cleaned_data.get("logo"))
+
 
 class CompanyStampForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Company
         fields = ["stamp"]
+
+    def clean_stamp(self):
+        return _validate_image_upload(self.cleaned_data.get("stamp"))
 
 
 class CreateUserForm(BootstrapFormMixin, forms.Form):
@@ -113,6 +137,11 @@ class CreateUserForm(BootstrapFormMixin, forms.Form):
         label="Entreprise", queryset=Company.objects.order_by("name"), required=False
     )
 
+    def clean_password(self):
+        password = self.cleaned_data["password"]
+        validate_password(password)
+        return password
+
     def clean(self):
         cleaned = super().clean()
         if cleaned.get("password") != cleaned.get("confirm_password"):
@@ -123,6 +152,17 @@ class CreateUserForm(BootstrapFormMixin, forms.Form):
         if cleaned.get("role") == User.Role.SELLER and not cleaned.get("company"):
             raise forms.ValidationError("Un vendeur doit être rattaché à une entreprise.")
         return cleaned
+
+
+class SetUserPasswordForm(forms.Form):
+    """Nouveau mot de passe défini par l'administrateur pour un compte."""
+
+    new_password = forms.CharField(label="Nouveau mot de passe", widget=forms.PasswordInput, min_length=8)
+
+    def clean_new_password(self):
+        password = self.cleaned_data["new_password"]
+        validate_password(password)
+        return password
 
 
 class ProductForm(BootstrapFormMixin, forms.ModelForm):
@@ -139,7 +179,7 @@ class ProductForm(BootstrapFormMixin, forms.ModelForm):
 
     def clean_price(self):
         price = self.cleaned_data["price"]
-        if price <= 0:
+        if not math.isfinite(price) or price <= 0:
             raise forms.ValidationError("Le prix unitaire doit être positif.")
         return price
 
@@ -159,6 +199,17 @@ class ProductImportForm(BootstrapFormMixin, forms.Form):
         f = self.cleaned_data["file"]
         if not f.name.lower().endswith(".xlsx"):
             raise forms.ValidationError("Le fichier doit être au format .xlsx (Excel).")
+        if f.size > settings.MAX_UPLOAD_SIZE_BYTES:
+            raise forms.ValidationError("Fichier trop volumineux (5 Mo maximum).")
+        # Un .xlsx est une archive ZIP : on refuse les fichiers corrompus ou "bombes de décompression"
+        try:
+            with zipfile.ZipFile(f) as archive:
+                if sum(info.file_size for info in archive.infolist()) > 50 * 1024 * 1024:
+                    raise forms.ValidationError("Fichier Excel trop volumineux une fois décompressé.")
+        except zipfile.BadZipFile:
+            raise forms.ValidationError("Fichier Excel invalide ou corrompu.")
+        finally:
+            f.seek(0)
         return f
 
 
@@ -220,9 +271,9 @@ class ServiceForm(BootstrapFormMixin, forms.ModelForm):
 
 
 class EmployeeForm(BootstrapFormMixin, forms.Form):
-    full_name = forms.CharField(label="Nom complet", min_length=2)
+    full_name = forms.CharField(label="Nom complet", min_length=2, max_length=150)
     role = forms.ChoiceField(label="Rôle", choices=Employee.Role.choices)
-    phone = forms.CharField(label="Téléphone (optionnel)", required=False)
+    phone = forms.CharField(label="Téléphone (optionnel)", required=False, max_length=30)
 
 
 

@@ -2,12 +2,14 @@
 # du modèle Excel à télécharger pour respecter le bon format de colonnes.
 
 import io
+import math
 
 import openpyxl
 from openpyxl.styles import Font, PatternFill
 
 # Colonnes attendues dans le fichier Excel, dans cet ordre. La ligne d'en-tête
 # (première ligne) est toujours ignorée lors de l'import.
+MAX_ROWS = 5000  # protection contre les fichiers démesurés
 COLUMNS = ["Désignation", "Description", "Prix (F CFA)", "Stock", "Seuil critique"]
 
 
@@ -45,23 +47,29 @@ def parse_products_file(uploaded_file, company):
     base ici : la validation et l'écriture sont séparées pour rester sûres."""
     from .models import Product  # import différé pour éviter tout cycle
 
-    wb = openpyxl.load_workbook(uploaded_file, data_only=True)
-    ws = wb.active
+    try:
+        wb = openpyxl.load_workbook(uploaded_file, data_only=True, read_only=True)
+        ws = wb.active
+    except Exception:
+        return [], ["Fichier Excel illisible ou corrompu."]
 
     products_to_create = []
     errors = []
 
     for row_index, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        if row_index - 1 > MAX_ROWS:
+            errors.append(f"Import limité à {MAX_ROWS} lignes : les lignes suivantes sont ignorées.")
+            break
         name, description, price, stock, critical_threshold = (list(row) + [None] * 5)[:5]
 
         if name is None or str(name).strip() == "":
             continue  # ligne vide : ignorée silencieusement
 
-        name = str(name).strip()
+        name = str(name).strip()[:200]
 
         try:
             price = float(price)
-            if price <= 0:
+            if not math.isfinite(price) or price <= 0 or price > 10_000_000_000:
                 raise ValueError
         except (TypeError, ValueError):
             errors.append(f"Ligne {row_index} : prix invalide pour « {name} ».")
@@ -69,7 +77,7 @@ def parse_products_file(uploaded_file, company):
 
         try:
             stock = int(stock) if stock is not None and str(stock).strip() != "" else 0
-            if stock < 0:
+            if stock < 0 or stock > 100_000_000:
                 raise ValueError
         except (TypeError, ValueError):
             errors.append(f"Ligne {row_index} : stock invalide pour « {name} ».")
@@ -88,7 +96,7 @@ def parse_products_file(uploaded_file, company):
             Product(
                 company=company,
                 name=name,
-                description=(str(description).strip() if description else None),
+                description=(str(description).strip()[:2000] if description else None),
                 price=price,
                 stock=stock,
                 critical_threshold=critical_threshold,

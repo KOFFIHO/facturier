@@ -10,7 +10,7 @@ Reprend toutes les fonctionnalités de la version précédente (React + API) :
 multi-entreprises, réduction, cadeaux, paiements combinés (dont Orange
 Money / MTN Money / Moov Money), facture A5 en français en F CFA, session
 de caisse avec fermeture automatique, historique filtrable, réinitialisation
-de mot de passe — **plus l'import de produits depuis un fichier Excel**.
+du mot de passe par l'administrateur — **plus l'import de produits depuis un fichier Excel**.
 
 ## Démarrage rapide
 
@@ -18,16 +18,17 @@ de mot de passe — **plus l'import de produits depuis un fichier Excel**.
 python -m venv venv
 source venv/bin/activate          # Windows : venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env
-python manage.py makemigrations core
+cp .env.example .env              # puis renseignez SECRET_KEY, ALLOWED_HOSTS... (voir .env.example)
 python manage.py migrate
-python manage.py seed             # crée un compte admin par défaut
-python manage.py runserver        # démarre l'application sur http://localhost:8000
+python manage.py seed             # crée le compte administrateur initial
+python manage.py runserver        # http://localhost:8000 (mettez DEBUG=True dans .env en local)
 ```
 
-Identifiants créés par `seed` :
-- Téléphone : `0000000000`
-- Mot de passe : `Admin@1234`
+Générer une `SECRET_KEY` : `python -c "import secrets; print(secrets.token_urlsafe(60))"`
+
+Le compte administrateur créé par `seed` a pour téléphone `0000000000`. Son mot de passe
+est celui de la variable `SEED_ADMIN_PASSWORD` du `.env`, ou, à défaut, un mot de passe
+**aléatoire affiché une seule fois** dans la console. Changez-le dès la première connexion.
 
 Connectez-vous puis créez votre première **entreprise**, puis vos
 **vendeurs**, puis vos **produits** (manuellement ou en les important

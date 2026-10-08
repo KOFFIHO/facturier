@@ -1,11 +1,27 @@
+import hmac
+import logging
+import math
+import mimetypes
+import os
+import re
 import uuid
+from urllib.parse import quote
+
+from django.conf import settings
+from django.contrib.auth import update_session_auth_hash
+from django.core.cache import cache
+from django.core.exceptions import SuspiciousFileOperation, ValidationError
 from django.core.paginator import Paginator
+from django.db import IntegrityError
+from django.http import Http404
+from django.utils._os import safe_join
+from django.utils.dateparse import parse_datetime
+from django.utils.http import url_has_allowed_host_and_scheme
 
 import json
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from facturier_mvt import settings
 from .models import Employee, SaleItem, SalePayment, SyncState
 from .sync_client import push_to_cloud
 
@@ -38,6 +54,7 @@ from .forms import (
     ProductImportForm,
     ResetPasswordForm,
     ServiceForm,
+    SetUserPasswordForm,
     ValidateSaleForm,
 )
 from .helpers import get_active_company
@@ -50,10 +67,176 @@ from .product_import import build_import_template, parse_products_file
 ROUNDING_TOLERANCE = 1  # F CFA - tolère les écarts d'arrondi d'affichage
 PAYMENT_METHOD_LABELS = dict(PaymentMethod.choices)
 
+logger = logging.getLogger("core")
+
+MAX_MONEY = 10_000_000_000   # plafond de sécurité pour tout montant saisi
+MAX_QTY = 100_000
+_PHONE_RE = re.compile(r"^\d{10}$")
+_ERROR_HTML = (
+    "<!doctype html><html lang='fr'><head><meta charset='utf-8'>"
+    "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+    "<title>{title}</title></head>"
+    "<body style='font-family:Arial,sans-serif;text-align:center;padding:12vh 16px;color:#222'>"
+    "<h1 style='font-size:48px;margin:0'>{code}</h1><p style='font-size:18px'>{message}</p>"
+    "<p><a href='/'>Retour à l'accueil</a></p></body></html>"
+)
+
+
+# ---------------------------------------------------------------------------
+# Utilitaires de validation (aucune saisie utilisateur n'est jamais de confiance)
+# ---------------------------------------------------------------------------
+
+def _parse_uuid(value):
+    try:
+        return uuid.UUID(str(value))
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+
+def _get_or_404_uuid(model, value, **filters):
+    uid = _parse_uuid(value)
+    if uid is None:
+        raise Http404("Identifiant invalide.")
+    return get_object_or_404(model, id=uid, **filters)
+
+
+def _valid_date_str(value):
+    """Retourne la date (AAAA-MM-JJ) si elle est valide, sinon None."""
+    if not value:
+        return None
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return None
+    return value
+
+
+def _parse_money(value, default=0.0):
+    """Montant fini, positif ou nul, plafonné. Lève ValueError sinon."""
+    raw = default if value in (None, "") else value
+    try:
+        number = float(raw)
+    except (TypeError, ValueError):
+        raise ValueError("Montant invalide.")
+    if not math.isfinite(number) or number < 0 or number > MAX_MONEY:
+        raise ValueError("Montant invalide.")
+    return number
+
+
+def _parse_quantity(value, default=1):
+    raw = default if value in (None, "") else value
+    try:
+        qty = int(raw)
+    except (TypeError, ValueError):
+        raise ValueError("Quantité invalide.")
+    if qty < 1 or qty > MAX_QTY:
+        raise ValueError("Quantité invalide.")
+    return qty
+
+
+def _parse_payments(request):
+    """Lignes de paiement valides : mode connu, montant fini > 0, sans doublon."""
+    payments, seen = [], set()
+    for method in request.POST.getlist("payment_method"):
+        if method not in PaymentMethod.values or method in seen:
+            continue
+        try:
+            amount = float(request.POST.get(f"payment_amount_{method}"))
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(amount) and 0 < amount <= MAX_MONEY:
+            payments.append({"method": method, "amount": amount})
+            seen.add(method)
+    return payments
+
+
+def _parse_discount(request):
+    discount_type = request.POST.get("discount_type", DiscountType.NONE)
+    if discount_type not in DiscountType.values:
+        discount_type = DiscountType.NONE
+    try:
+        discount_value = _parse_money(request.POST.get("discount_value"), 0)
+    except ValueError:
+        discount_value = 0
+    if discount_type == DiscountType.PERCENTAGE:
+        discount_value = min(discount_value, 100)
+    return discount_type, discount_value
+
+
+def _client_kwargs(request):
+    """Champs client nettoyés et validés (lève ValueError si invalides)."""
+    name = (request.POST.get("client_name") or "").strip()[:200] or None
+    phone = (request.POST.get("client_phone") or "").strip() or None
+    notes = (request.POST.get("notes") or "").strip()[:2000] or None
+    if phone and not _PHONE_RE.match(phone):
+        raise ValueError("Le téléphone du client doit contenir exactement 10 chiffres.")
+    return {"client_name": name, "client_phone": phone, "notes": notes}
+
+
+def _get_sale_for_user(request, sale_id):
+    """Facture accessible uniquement si l'utilisateur y a droit (anti-IDOR) :
+    l'ADMIN voit tout ; un vendeur ne voit que SES ventes de SON entreprise."""
+    sale = get_object_or_404(Sale, pk=sale_id)
+    user = request.user
+    if user.role == User.Role.ADMIN:
+        return sale
+    if sale.company_id != user.company_id or sale.seller_id != user.id:
+        raise Http404("Facture introuvable.")
+    return sale
+
+
+# ---------------------------------------------------------------------------
+# Pages d'erreur sobres (aucune information technique affichée)
+# ---------------------------------------------------------------------------
+
+def error_404(request, exception=None):
+    return HttpResponse(_ERROR_HTML.format(title="Page introuvable", code=404,
+                                           message="Cette page est introuvable."), status=404)
+
+
+def error_403(request, exception=None):
+    return HttpResponse(_ERROR_HTML.format(title="Accès refusé", code=403,
+                                           message="Accès refusé."), status=403)
+
+
+def error_500(request):
+    return HttpResponse(_ERROR_HTML.format(title="Erreur", code=500,
+                                           message="Une erreur est survenue. Réessayez plus tard."), status=500)
+
+
+# ---------------------------------------------------------------------------
+# Fichiers uploadés (logo, cachet) : servis uniquement aux utilisateurs connectés
+# ---------------------------------------------------------------------------
+
+def media_view(request, path):
+    if not request.user.is_authenticated:
+        raise Http404
+    try:
+        full_path = safe_join(str(settings.MEDIA_ROOT), path)  # bloque le path traversal
+    except (SuspiciousFileOperation, ValueError):
+        raise Http404
+    ext = os.path.splitext(full_path)[1].lower()
+    if ext not in (".png", ".jpg", ".jpeg", ".webp") or not os.path.isfile(full_path):
+        raise Http404
+    if request.user.role != User.Role.ADMIN:
+        allowed = Company.objects.filter(
+            Q(logo=path) | Q(stamp=path), id=request.user.company_id
+        ).exists()
+        if not allowed:
+            raise Http404
+    response = FileResponse(open(full_path, "rb"), content_type=mimetypes.guess_type(full_path)[0] or "image/png")
+    response["Cache-Control"] = "private, max-age=3600"
+    return response
+
 
 # ---------------------------------------------------------------------------
 # Authentification
 # ---------------------------------------------------------------------------
+
+def _login_keys(request, phone):
+    ip = request.META.get("REMOTE_ADDR", "unknown")
+    return f"login_fail:phone:{phone}", f"login_fail:ip:{ip}"
+
 
 def login_view(request):
     if request.user.is_authenticated:
@@ -61,14 +244,26 @@ def login_view(request):
 
     form = LoginForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
-        user = authenticate(
-            request,
-            username=form.cleaned_data["phone_number"],
-            password=form.cleaned_data["password"],
-        )
+        phone = form.cleaned_data["phone_number"]
+        key_phone, key_ip = _login_keys(request, phone)
+        max_attempts = settings.LOGIN_MAX_ATTEMPTS
+        timeout = settings.LOGIN_LOCKOUT_MINUTES * 60
+
+        # Anti force brute : blocage temporaire par numéro ET par adresse IP
+        if cache.get(key_phone, 0) >= max_attempts or cache.get(key_ip, 0) >= max_attempts * 4:
+            messages.error(
+                request,
+                f"Trop de tentatives échouées. Réessayez dans {settings.LOGIN_LOCKOUT_MINUTES} minutes.",
+            )
+            return render(request, "core/login.html", {"form": form}, status=429)
+
+        user = authenticate(request, username=phone, password=form.cleaned_data["password"])
         if user is None:
+            for key in (key_phone, key_ip):
+                cache.set(key, cache.get(key, 0) + 1, timeout)
             messages.error(request, "Identifiants incorrects.")
         else:
+            cache.delete(key_phone)
             login(request, user)
             return redirect("caisse")
 
@@ -76,41 +271,36 @@ def login_view(request):
 
 
 def logout_view(request):
-    logout(request)
-    return redirect("login")
+    """Déconnexion en POST uniquement (un simple lien GET ne peut plus
+    déconnecter un utilisateur à son insu)."""
+    if request.method == "POST":
+        logout(request)
+        return redirect("login")
+    return redirect("caisse" if request.user.is_authenticated else "login")
 
 
 def reset_password_view(request):
-    """Réinitialisation en libre-service pour un VENDEUR : identité vérifiée
-    uniquement par téléphone + entreprise (pas d'email/SMS)."""
-    form = ResetPasswordForm(request.POST or None)
-    success = False
-
-    if request.method == "POST" and form.is_valid():
-        try:
-            user = User.objects.get(
-                phone_number=form.cleaned_data["phone_number"],
-                company=form.cleaned_data["company"],
-                role=User.Role.SELLER,
-            )
-        except User.DoesNotExist:
-            messages.error(request, "Numéro de téléphone ou entreprise incorrect.")
-        else:
-            user.set_password(form.cleaned_data["new_password"])
-            user.save(update_fields=["password"])
-            success = True
-
-    return render(request, "core/reset_password.html", {"form": form, "success": success})
+    """La réinitialisation libre-service a été supprimée (prise de contrôle de
+    compte possible avec un simple numéro de téléphone). Le mot de passe d'un
+    vendeur est désormais réinitialisé par l'administrateur (page Vendeurs)."""
+    return render(request, "core/reset_password.html")
 
 
 @login_required
 def switch_company_view(request):
     """Change l'entreprise active de l'ADMIN (mémorisée en session)."""
     if request.user.role == User.Role.ADMIN and request.method == "POST":
-        company_id = request.POST.get("company_id")
-        if Company.objects.filter(id=company_id).exists():
-            request.session["active_company_id"] = company_id
-    return redirect(request.POST.get("next") or "dashboard")
+        company_uuid = _parse_uuid(request.POST.get("company_id"))
+        if company_uuid and Company.objects.filter(id=company_uuid).exists():
+            request.session["active_company_id"] = str(company_uuid)
+            # Le panier appartient à l'entreprise précédente : on le vide
+            request.session.pop("cart", None)
+            request.session.pop("service_cart", None)
+    next_url = request.POST.get("next") or ""
+    if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()},
+                                           require_https=request.is_secure()):
+        next_url = "dashboard"
+    return redirect(next_url)
 
 
 
@@ -403,6 +593,25 @@ def user_deactivate_view(request, user_id):
         )
     return redirect("users_list")
 
+@admin_required
+def user_set_password_view(request, user_id):
+    """Réinitialisation du mot de passe d'un compte par l'administrateur."""
+    target_user = get_object_or_404(User, id=user_id)
+    if request.method == "POST":
+        form = SetUserPasswordForm(request.POST)
+        if form.is_valid():
+            target_user.set_password(form.cleaned_data["new_password"])
+            target_user.save(update_fields=["password"])
+            if target_user.id == request.user.id:
+                update_session_auth_hash(request, target_user)
+            messages.success(request, f"Mot de passe de « {target_user.full_name} » modifié.")
+        else:
+            for errors in form.errors.values():
+                for error in errors:
+                    messages.error(request, error)
+    return redirect("users_list")
+
+
 def _get_cart(request):
     return request.session.setdefault("cart", {})
 
@@ -420,9 +629,9 @@ def _caisse_redirect_url(request):
     url = redirect("caisse").url
     params = []
     if q:
-        params.append(f"q={q}")
+        params.append("q=" + quote(q))
     if page:
-        params.append(f"page={page}")
+        params.append("page=" + quote(page))
     
     if params:
         url += "?" + "&".join(params)
@@ -548,8 +757,9 @@ def cash_session_open_view(request):
     if request.user.role != User.Role.SELLER:
         return redirect("dashboard")
     if not request.user.company_id:
+        logout(request)
         messages.error(request, "Ce vendeur n'est associé à aucune entreprise.")
-        return redirect("logout")
+        return redirect("login")
     if _get_active_cash_session(request.user):
         return redirect("caisse")
 
@@ -596,12 +806,15 @@ def cash_session_extend_view(request):
 
 @seller_required
 def cash_session_close_view(request):
+    if request.method != "POST":
+        return redirect("caisse")
     session = _get_active_cash_session(request.user)
-    if session and request.method == "POST":
+    if session:
         session.is_closed = True
         session.actual_closed_at = timezone.now()
         session.save(update_fields=["is_closed", "actual_closed_at"])
-    return redirect("logout")
+    logout(request)
+    return redirect("login")
 
 def _flash_caisse_form(request):
     methods = request.POST.getlist("payment_method")
@@ -652,7 +865,7 @@ def caisse_view(request):
         if action == "add_product":
             form = AddToCartForm(request.POST)
             if form.is_valid():
-                product = get_object_or_404(Product, id=form.cleaned_data["product_id"], company=company)
+                product = _get_or_404_uuid(Product, form.cleaned_data["product_id"], company=company)
                 quantity = min(form.cleaned_data["quantity"], product.stock) if product.stock > 0 else 0
                 if quantity > 0:
                     cart[uuid.uuid4().hex] = {
@@ -666,10 +879,10 @@ def caisse_view(request):
             return redirect("caisse")
 
         if action == "add_service":
-            service = get_object_or_404(Service, id=request.POST.get("service_id"), company=company)
+            service = _get_or_404_uuid(Service, request.POST.get("service_id"), company=company)
             try:
-                price = max(0, float(request.POST.get("price") or service.default_price))
-                quantity = max(1, int(request.POST.get("quantity") or 1))
+                price = _parse_money(request.POST.get("price"), service.default_price)
+                quantity = _parse_quantity(request.POST.get("quantity"))
             except ValueError:
                 messages.error(request, "Prix ou quantité invalide.")
                 return redirect("caisse")
@@ -686,8 +899,8 @@ def caisse_view(request):
                 messages.error(request, "La désignation de la prestation est requise.")
                 return redirect("caisse")
             try:
-                price = max(0, float(request.POST.get("price") or 0))
-                quantity = max(1, int(request.POST.get("quantity") or 1))
+                price = _parse_money(request.POST.get("price"), 0)
+                quantity = _parse_quantity(request.POST.get("quantity"))
             except ValueError:
                 messages.error(request, "Prix ou quantité invalide.")
                 return redirect("caisse")
@@ -707,7 +920,7 @@ def caisse_view(request):
             line_id = request.POST.get("line_id")
             if line_id in cart:
                 try:
-                    cart[line_id]["discount"] = max(0, float(request.POST.get("discount_amount") or 0))
+                    cart[line_id]["discount"] = _parse_money(request.POST.get("discount_amount"), 0)
                 except ValueError:
                     cart[line_id]["discount"] = 0
                 _save_cart(request, cart)
@@ -786,40 +999,38 @@ def _handle_validate_sale(request, company, cart, cash_session):
             messages.error(request, "La session de caisse est arrivée à échéance. Veuillez la clôturer ou la prolonger.")
             return redirect("cash_session_open")
 
-    payments = []
-    for method in request.POST.getlist("payment_method"):
-        try:
-            amount = float(request.POST.get(f"payment_amount_{method}"))
-        except (TypeError, ValueError):
-            continue
-        if amount > 0:
-            payments.append({"method": method, "amount": amount})
+    payments = _parse_payments(request)
 
     if not payments:
         _flash_caisse_form(request)
         messages.error(request, "Sélectionnez au moins un mode de paiement.")
         return redirect("caisse")
 
-    discount_type = request.POST.get("discount_type", DiscountType.NONE)
-    try:
-        discount_value = float(request.POST.get("discount_value") or 0)
-    except ValueError:
-        discount_value = 0
+    discount_type, discount_value = _parse_discount(request)
 
     try:
         with transaction.atomic():
             sub_total = 0
             resolved = []
             has_product, has_service = False, False
+            reserved = {}  # quantité cumulée par produit (même produit sur plusieurs lignes)
 
             for line in cart.values():
                 if line["kind"] == "product":
-                    product = Product.objects.select_for_update().get(id=line["ref_id"], company=company)
-                    if line["quantity"] > product.stock:
+                    try:
+                        product = Product.objects.select_for_update().get(id=line["ref_id"], company=company)
+                    except (Product.DoesNotExist, ValidationError):
+                        raise ValueError(
+                            "Un produit du panier n'existe plus ou n'appartient pas à cette "
+                            "entreprise. Videz le panier et recommencez."
+                        )
+                    wanted = reserved.get(product.id, 0) + line["quantity"]
+                    if wanted > product.stock:
                         raise ValueError(
                             f'Stock insuffisant pour "{product.name}" '
-                            f"(demandé: {line['quantity']}, disponible: {product.stock})."
+                            f"(demandé: {wanted}, disponible: {product.stock})."
                         )
+                    reserved[product.id] = wanted
                     has_product = True
                 else:
                     product = None
@@ -861,9 +1072,7 @@ def _handle_validate_sale(request, company, cart, cash_session):
                 company=company, sale_type=sale_type,
                 sub_total=sub_total, discount_type=discount_type, discount_value=discount_value,
                 discount_amount=discount_amount, tva_amount=tva_amount, total=total,
-                client_name=request.POST.get("client_name") or None,
-                client_phone=request.POST.get("client_phone") or None,
-                notes=request.POST.get("notes") or None,
+                **_client_kwargs(request),
                 seller=request.user,
                 seller_name=request.user.full_name,
             )
@@ -909,9 +1118,10 @@ def sales_history_view(request):
     if not is_admin:
         sales = sales.filter(seller=request.user)
 
-    start_date = request.GET.get("start_date")
-    end_date = request.GET.get("end_date")
+    start_date = _valid_date_str(request.GET.get("start_date"))
+    end_date = _valid_date_str(request.GET.get("end_date"))
     product_id = request.GET.get("product_id")
+    product_id = str(_parse_uuid(product_id)) if _parse_uuid(product_id) else None
 
     if request.GET.get("today") == "1":
         today_str = timezone.now().date().isoformat()
@@ -940,7 +1150,7 @@ def sales_history_view(request):
 
 @login_required
 def invoice_view(request, sale_id):
-    sale = get_object_or_404(Sale, id=sale_id)
+    sale = _get_sale_for_user(request, sale_id)
     items_display = []
     for item in sale.items.all():
         raw_amount = item.price * item.quantity
@@ -952,7 +1162,7 @@ def invoice_view(request, sale_id):
 
 @login_required
 def invoice_pdf_view(request, sale_id):
-    sale = get_object_or_404(Sale, id=sale_id)
+    sale = _get_sale_for_user(request, sale_id)
     pdf_buffer = build_invoice_pdf(sale, sale.company)
     return FileResponse(
         pdf_buffer, content_type="application/pdf",
@@ -994,10 +1204,10 @@ def caisse_services_view(request):
         action = request.POST.get("action")
 
         if action == "add_service":
-            service = get_object_or_404(Service, id=request.POST.get("service_id"), company=company)
+            service = _get_or_404_uuid(Service, request.POST.get("service_id"), company=company)
             try:
-                price = max(0, float(request.POST.get("price") or service.default_price))
-                quantity = max(1, int(request.POST.get("quantity") or 1))
+                price = _parse_money(request.POST.get("price"), service.default_price)
+                quantity = _parse_quantity(request.POST.get("quantity"))
             except ValueError:
                 messages.error(request, "Prix ou quantité invalide.")
                 return redirect("caisse_services")
@@ -1014,8 +1224,8 @@ def caisse_services_view(request):
                 messages.error(request, "La désignation de la prestation est requise.")
                 return redirect("caisse_services")
             try:
-                price = max(0, float(request.POST.get("price") or 0))
-                quantity = max(1, int(request.POST.get("quantity") or 1))
+                price = _parse_money(request.POST.get("price"), 0)
+                quantity = _parse_quantity(request.POST.get("quantity"))
             except ValueError:
                 messages.error(request, "Prix ou quantité invalide.")
                 return redirect("caisse_services")
@@ -1035,7 +1245,7 @@ def caisse_services_view(request):
             line_id = request.POST.get("line_id")
             if line_id in cart:
                 try:
-                    cart[line_id]["discount"] = max(0, float(request.POST.get("discount_amount") or 0))
+                    cart[line_id]["discount"] = _parse_money(request.POST.get("discount_amount"), 0)
                 except ValueError:
                     cart[line_id]["discount"] = 0
                 _save_service_cart(request, cart)
@@ -1123,25 +1333,14 @@ def _handle_validate_service_sale(request, company, cart, cash_session):
             messages.error(request, "Session de caisse fermée ou expirée.")
             return redirect("cash_session_open")
 
-    payments = []
-    for method in request.POST.getlist("payment_method"):
-        try:
-            amount = float(request.POST.get(f"payment_amount_{method}"))
-        except (TypeError, ValueError):
-            continue
-        if amount > 0:
-            payments.append({"method": method, "amount": amount})
+    payments = _parse_payments(request)
 
     if not payments:
         _flash_services_form(request)
         messages.error(request, "Sélectionnez au moins un mode de paiement.")
         return redirect("caisse_services")
 
-    discount_type = request.POST.get("discount_type", DiscountType.NONE)
-    try:
-        discount_value = float(request.POST.get("discount_value") or 0)
-    except ValueError:
-        discount_value = 0
+    discount_type, discount_value = _parse_discount(request)
 
     try:
         with transaction.atomic():
@@ -1177,10 +1376,9 @@ def _handle_validate_service_sale(request, company, cart, cash_session):
                 company=company, sale_type=SaleType.SERVICE,
                 sub_total=sub_total, discount_type=discount_type, discount_value=discount_value,
                 discount_amount=discount_amount, tva_amount=tva_amount, total=total,
-                client_name=request.POST.get("client_name") or None,
-                client_phone=request.POST.get("client_phone") or None,
-                notes=request.POST.get("notes") or None,
+                **_client_kwargs(request),
                 seller=request.user,
+                seller_name=request.user.full_name,
             )
 
             for line, line_discount in resolved:
@@ -1286,7 +1484,7 @@ def employees_list_view(request):
 
 @manager_required
 def employee_deactivate_view(request, employee_id):
-    employee = get_object_or_404(Employee, id=employee_id)
+    employee = get_object_or_404(Employee, id=employee_id, company=get_active_company(request))
     if request.method == "POST":
         employee.is_active = not employee.is_active
         employee.save(update_fields=["is_active"])
@@ -1302,8 +1500,8 @@ def depenses_list_view(request):
         return render(request, "core/depenses_list.html", {"company": None})
 
     query = request.GET.get("q", "").strip()
-    start_date = request.GET.get("start_date")
-    end_date = request.GET.get("end_date")
+    start_date = _valid_date_str(request.GET.get("start_date"))
+    end_date = _valid_date_str(request.GET.get("end_date"))
 
     depenses = Depense.objects.filter(company=company)
     if query:
@@ -1377,8 +1575,8 @@ def approvisionnements_list_view(request):
     entries = Approvisionnement.objects.filter(company=company).select_related("product")
 
     query = request.GET.get("q", "").strip()
-    start_date = request.GET.get("start_date")
-    end_date = request.GET.get("end_date")
+    start_date = _valid_date_str(request.GET.get("start_date"))
+    end_date = _valid_date_str(request.GET.get("end_date"))
     if query:
         entries = entries.filter(product__name__icontains=query)
     if start_date:
@@ -1394,38 +1592,14 @@ def approvisionnements_list_view(request):
     })
 
 
-@csrf_exempt
-def sync_receive_view(request):
-    """Reçoit les données envoyées par l'instance locale et les intègre dans la base du serveur en ligne."""
-    if request.method != "POST":
-        return JsonResponse({"message": "Méthode non autorisée."}, status=405)
-
-    token = request.headers.get("X-Sync-Token")
-    if not settings.SYNC_TOKEN or token != settings.SYNC_TOKEN:
-        return JsonResponse({"message": "Jeton de synchronisation invalide."}, status=403)
-
-    try:
-        payload = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({"message": "JSON invalide."}, status=400)
-
+def _apply_sync_payload(payload):
+    """Intègre les données reçues. Les comptes utilisateurs ne sont JAMAIS
+    acceptés par cette route (aucun compte ne peut être créé/modifié à distance)."""
     for c in payload.get("companies", []):
         Company.objects.update_or_create(id=c["id"], defaults={
             "name": c["name"], "address": c.get("address"), "phone": c.get("phone"),
             "email": c.get("email"), "website": c.get("website"), "tva_rate": c.get("tva_rate", 18),
         })
-
-    for u in payload.get("users", []):
-        user, created = User.objects.update_or_create(id=u["id"], defaults={
-            "full_name": u["full_name"],
-            "phone_number": u["phone_number"],
-            "role": u.get("role", "SELLER"),
-            "company_id": u.get("company_id"),
-            "is_active": u.get("is_active", True),
-        })
-        if created:
-            user.set_unusable_password()
-            user.save(update_fields=["password"])
 
     for e in payload.get("employees", []):
         Employee.objects.update_or_create(id=e["id"], defaults={
@@ -1471,6 +1645,10 @@ def sync_receive_view(request):
             "tva_amount": s["tva_amount"], "total": s["total"],
             "seller": None, "seller_name": s.get("seller_name", ""),
         })
+        # created_at est auto_now_add : on restaure la vraie date de la vente locale
+        created_at = parse_datetime(s.get("created_at") or "")
+        if created_at:
+            Sale.objects.filter(pk=sale.pk).update(created_at=created_at)
         sale.items.all().delete()
         for item in s.get("items", []):
             SaleItem.objects.create(
@@ -1481,6 +1659,38 @@ def sync_receive_view(request):
         sale.payments.all().delete()
         for payment in s.get("payments", []):
             SalePayment.objects.create(sale=sale, method=payment["method"], amount=payment["amount"])
+
+
+@csrf_exempt
+def sync_receive_view(request):
+    """Reçoit les données de l'instance locale (serveur en ligne uniquement).
+    Désactivée par défaut : il faut SYNC_RECEIVE_ENABLED=True et un SYNC_TOKEN
+    long dans le .env du serveur cloud."""
+    if not settings.SYNC_RECEIVE_ENABLED:
+        return JsonResponse({"message": "Introuvable."}, status=404)
+
+    if request.method != "POST":
+        return JsonResponse({"message": "Méthode non autorisée."}, status=405)
+
+    expected = settings.SYNC_TOKEN
+    received = request.headers.get("X-Sync-Token", "")
+    if len(expected) < 24 or not hmac.compare_digest(received.encode("utf-8"), expected.encode("utf-8")):
+        logger.warning("Synchronisation refusée : jeton invalide (IP %s).", request.META.get("REMOTE_ADDR"))
+        return JsonResponse({"message": "Jeton de synchronisation invalide."}, status=403)
+
+    try:
+        payload = json.loads(request.body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"message": "JSON invalide."}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"message": "JSON invalide."}, status=400)
+
+    try:
+        with transaction.atomic():
+            _apply_sync_payload(payload)
+    except (KeyError, TypeError, ValueError, ValidationError, IntegrityError) as exc:
+        logger.warning("Synchronisation rejetée : %s", exc)
+        return JsonResponse({"message": "Données de synchronisation invalides."}, status=400)
 
     return JsonResponse({"message": "Synchronisation reçue avec succès."})
 

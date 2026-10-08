@@ -260,12 +260,25 @@
                   </form>
 
 
+                  <!-- Nouveau mot de passe (défini par l'administrateur) -->
+                  <form
+                    method="post"
+                    action="{% url 'user_set_password' u.id %}"
+                    class="d-inline-flex gap-1 align-items-center"
+                  >
+                    {% csrf_token %}
+                    <input type="password" name="new_password" minlength="8" required
+                           autocomplete="new-password" placeholder="Nouveau mot de passe"
+                           class="form-control form-control-sm" style="width:170px;">
+                    <button type="submit" class="btn btn-outline-primary btn-sm">Changer</button>
+                  </form>
+
                   <!-- Supprimer -->
                   <form
                     method="post"
                     action="{% url 'user_delete' u.id %}"
                     class="d-inline"
-                    onsubmit="return confirm('Supprimer définitivement « {{ u.full_name }} » ? Cette action est irréversible.');"
+                    onsubmit="return confirm('Supprimer définitivement « {{ u.full_name|escapejs }} » ? Cette action est irréversible.');"
                   >
 
                     {% csrf_token %}

@@ -510,11 +510,21 @@ def push_to_cloud():
             "SYNC_TOKEN manquant."
         )
 
+    if not settings.CLOUD_SYNC_URL.lower().startswith(("https://", "http://")):
+        return (
+            False,
+            "CLOUD_SYNC_URL doit commencer par https:// "
+            "(ou http:// en test)."
+        )
+
 
     # ========================================================================
     # COLLECTE
     # ========================================================================
 
+    # Horodatage pris AVANT la collecte : une donnée créée pendant l'envoi
+    # sera reprise à la prochaine synchronisation (aucune perte possible).
+    started_at = timezone.now()
     payload = collect_pending_payload()
 
     total_records = sum(
@@ -616,13 +626,11 @@ def push_to_cloud():
     # On ne modifie les SyncState qu'après confirmation
     # du serveur cloud.
 
-    now = timezone.now()
-
     for key in SYNC_KEYS:
 
         _set_last_synced(
             key,
-            now
+            started_at
         )
 
 
