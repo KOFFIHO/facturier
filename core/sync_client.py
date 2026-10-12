@@ -19,7 +19,9 @@
 #   - Approvisionnement
 
 
+import base64
 import json
+import os
 import urllib.error
 import urllib.request
 
@@ -486,7 +488,8 @@ def collect_pending_payload():
 
 def push_to_cloud():
     """
-    Envoie les données en attente vers le serveur cloud.
+    Envoie les données en attente vers le serveur cloud, 
+    en incluant l'encodage base64 des logos et cachets d'entreprise.
 
     last_synced_at n'est mis à jour QUE si le serveur cloud
     confirme correctement la réception avec HTTP 200.
@@ -519,13 +522,35 @@ def push_to_cloud():
 
 
     # ========================================================================
-    # COLLECTE
+    # COLLECTE & AJOUT DES IMAGES (LOGO / CACHET) EN BASE64
     # ========================================================================
 
     # Horodatage pris AVANT la collecte : une donnée créée pendant l'envoi
     # sera reprise à la prochaine synchronisation (aucune perte possible).
     started_at = timezone.now()
     payload = collect_pending_payload()
+
+    # Traitement spécifique pour injecter le logo et le cachet en Base64
+    for comp_data in payload.get("companies", []):
+        try:
+            comp_obj = Company.objects.filter(id=comp_data.get("id")).first()
+            if comp_obj:
+                if comp_obj.logo and hasattr(comp_obj.logo, "name") and comp_obj.logo.name:
+                    try:
+                        with comp_obj.logo.open("rb") as f:
+                            comp_data["logo_base64"] = base64.b64encode(f.read()).decode("utf-8")
+                            comp_data["logo_name"] = os.path.basename(comp_obj.logo.name)
+                    except Exception:
+                        pass
+                if comp_obj.stamp and hasattr(comp_obj.stamp, "name") and comp_obj.stamp.name:
+                    try:
+                        with comp_obj.stamp.open("rb") as f:
+                            comp_data["stamp_base64"] = base64.b64encode(f.read()).decode("utf-8")
+                            comp_data["stamp_name"] = os.path.basename(comp_obj.stamp.name)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
     total_records = sum(
         len(records)
@@ -560,7 +585,12 @@ def push_to_cloud():
         method="POST",
         headers={
             "Content-Type": "application/json",
+            "Accept": "application/json",
             "X-Sync-Token": settings.SYNC_TOKEN,
+            # Certains hébergeurs (LiteSpeed/cPanel, dont hostcm) bloquent
+            # par défaut le User-Agent générique d'urllib (renvoie un 412
+            # Precondition Failed avant même d'atteindre Django).
+            "User-Agent": "FacturierSyncClient/1.0",
         },
     )
 
@@ -586,10 +616,14 @@ def push_to_cloud():
 
     except urllib.error.HTTPError as exc:
 
+        try:
+            error_body = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            error_body = ""
+
         return (
             False,
-            f"Erreur HTTP du serveur cloud : "
-            f"{exc.code} - {exc.reason}"
+            f"Erreur HTTP du serveur cloud : {exc.code} {exc.reason} — {error_body}"
         )
 
 
@@ -639,3 +673,4 @@ def push_to_cloud():
         f"{total_records} enregistrement(s) "
         "synchronisé(s)."
     )
+
