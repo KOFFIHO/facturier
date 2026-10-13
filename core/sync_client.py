@@ -186,7 +186,13 @@ def _serialize_sale(s):
     """
 
     return {
+        # Numéro de la vente sur ce PC (affiché sur la facture).
         "id": str(s.id),
+        # Identifiant unique : c'est lui qui permet au serveur de
+        # reconnaître la vente, même si un autre PC a le même numéro.
+        "sync_uuid": str(s.sync_uuid),
+        # Code du poste qui a créé la vente (ex : B1C1).
+        "poste_code": s.poste_code,
         "company_id": str(s.company_id),
 
         "client_name": s.client_name,

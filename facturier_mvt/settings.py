@@ -210,3 +210,8 @@ SYNC_TOKEN = os.getenv("SYNC_TOKEN", "")
 SYNC_INTERVAL_MINUTES = int(os.getenv("SYNC_INTERVAL_MINUTES", "5"))
 # Le serveur cloud n'accepte la réception que si ce réglage est activé (désactivé par défaut)
 SYNC_RECEIVE_ENABLED = _env_bool("SYNC_RECEIVE_ENABLED", False)
+
+# Code unique du poste de caisse (ex : B1C1 = boutique 1, caisse 1).
+# Chaque PC a le sien : il préfixe les numéros de facture et accompagne
+# chaque vente synchronisée. Laisser VIDE sur le serveur en ligne.
+POSTE_CODE = os.getenv("POSTE_CODE", "").strip().upper()[:10]

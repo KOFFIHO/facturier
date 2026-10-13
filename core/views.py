@@ -1592,9 +1592,24 @@ def approvisionnements_list_view(request):
     })
 
 
+# Doit rester identique à LEGACY_SALE_NAMESPACE dans la migration
+# core/migrations/0011_... : sert à reconnaître les ventes envoyées par un PC
+# pas encore mis à jour (sans sync_uuid).
+LEGACY_SALE_NAMESPACE = uuid.UUID("6f1c2b8e-3d4a-4e5b-9c7d-2a1b0c9d8e7f")
+
+
 def _apply_sync_payload(payload):
-    """Intègre les données reçues. Les comptes utilisateurs ne sont JAMAIS
-    acceptés par cette route (aucun compte ne peut être créé/modifié à distance)."""
+    """Intègre les données reçues d'un PC de caisse (serveur en ligne).
+
+    Plusieurs PC peuvent envoyer vers ce serveur :
+    - les ventes sont reconnues par leur `sync_uuid` (jamais par leur numéro,
+      que deux PC peuvent avoir en commun) ;
+    - le stock du serveur est CALCULÉ : il baisse à chaque nouvelle vente et
+      monte à chaque nouvel approvisionnement reçus, quel que soit le PC.
+      Le stock envoyé par un PC ne sert qu'à la création d'un produit.
+
+    Les comptes utilisateurs ne sont JAMAIS acceptés par cette route
+    (aucun compte ne peut être créé/modifié à distance)."""
     for c in payload.get("companies", []):
         Company.objects.update_or_create(id=c["id"], defaults={
             "name": c["name"], "address": c.get("address"), "phone": c.get("phone"),
@@ -1610,11 +1625,25 @@ def _apply_sync_payload(payload):
             "is_active": e.get("is_active", True),
         })
 
+    # Produits créés par CE lot : leur stock reçu tient déjà compte des ventes
+    # et approvisionnements de ce même lot, on ne les recompte donc pas.
+    new_product_ids = set()
     for p in payload.get("products", []):
-        Product.objects.update_or_create(id=p["id"], defaults={
+        defaults = {
             "company_id": p["company_id"], "name": p["name"], "description": p.get("description"),
-            "price": p["price"], "stock": p["stock"], "critical_threshold": p.get("critical_threshold", 5),
-        })
+            "price": p["price"], "critical_threshold": p.get("critical_threshold", 5),
+        }
+        # Le stock n'est repris que pour un nouveau produit : sinon le dernier
+        # PC synchronisé écraserait les ventes des autres PC.
+        _, created = Product.objects.update_or_create(
+            id=p["id"], defaults=defaults, create_defaults={**defaults, "stock": p["stock"]},
+        )
+        if created:
+            new_product_ids.add(str(p["id"]))
+
+    def _adjust_stock(product_id, delta):
+        if product_id and str(product_id) not in new_product_ids and delta:
+            Product.objects.filter(id=product_id).update(stock=F("stock") + delta)
 
     for s in payload.get("services", []):
         Service.objects.update_or_create(id=s["id"], defaults={
@@ -1630,13 +1659,18 @@ def _apply_sync_payload(payload):
         })
 
     for a in payload.get("approvisionnements", []):
-        Approvisionnement.objects.update_or_create(id=a["id"], defaults={
+        _, created = Approvisionnement.objects.update_or_create(id=a["id"], defaults={
             "company_id": a["company_id"], "product_id": a["product_id"], "quantity": a["quantity"],
             "unit_cost": a.get("unit_cost"), "date": a["date"], "comment": a.get("comment"),
         })
+        if created:
+            _adjust_stock(a["product_id"], int(a["quantity"]))
 
     for s in payload.get("sales", []):
-        sale, _ = Sale.objects.update_or_create(id=s["id"], defaults={
+        # Identifiant de la vente : sync_uuid envoyé par le PC, ou, pour un PC
+        # pas encore mis à jour, le même calcul que la migration 0011.
+        sync_uuid = s.get("sync_uuid") or uuid.uuid5(LEGACY_SALE_NAMESPACE, f"sale-{s['id']}")
+        sale, created = Sale.objects.update_or_create(sync_uuid=sync_uuid, defaults={
             "company_id": s["company_id"], "client_name": s.get("client_name"),
             "client_phone": s.get("client_phone"), "notes": s.get("notes"),
             "sale_type": s.get("sale_type", "PRODUCT"),
@@ -1644,6 +1678,9 @@ def _apply_sync_payload(payload):
             "discount_amount": s.get("discount_amount", 0), "sub_total": s["sub_total"],
             "tva_amount": s["tva_amount"], "total": s["total"],
             "seller": None, "seller_name": s.get("seller_name", ""),
+            "poste_code": (s.get("poste_code") or "")[:10],
+            # Numéro d'origine sur le PC, pour afficher le même numéro de facture.
+            "local_number": int(s["id"]),
         })
         # created_at est auto_now_add : on restaure la vraie date de la vente locale
         created_at = parse_datetime(s.get("created_at") or "")
@@ -1656,6 +1693,9 @@ def _apply_sync_payload(payload):
                 label=item.get("label", ""), quantity=item["quantity"], price=item["price"],
                 is_gift=item.get("is_gift", False), discount_amount=item.get("discount_amount", 0),
             )
+            # Nouvelle vente uniquement : une vente renvoyée ne baisse pas le stock deux fois.
+            if created:
+                _adjust_stock(item.get("product_id"), -int(item["quantity"]))
         sale.payments.all().delete()
         for payment in s.get("payments", []):
             SalePayment.objects.create(sale=sale, method=payment["method"], amount=payment["amount"])

@@ -192,21 +192,43 @@ class Sale(models.Model):
     seller = models.ForeignKey(User, related_name="sales", on_delete=models.SET_NULL, null=True, blank=True)
     seller_name = models.CharField(max_length=150, blank=True, default="")  # copie du nom, pour le cloud (jamais de compte/mot de passe synchronisé)
 
+    # --- Plusieurs PC de caisse vers un seul serveur en ligne ---
+    # Identifiant unique de la vente, le même sur le PC et sur le serveur.
+    # C'est lui (et non `id`) qui sert à reconnaître la vente lors de la
+    # synchronisation : deux PC peuvent avoir chacun leur vente n°12 sans
+    # que l'une écrase l'autre.
+    sync_uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    # Code du poste qui a créé la vente (ex : B1C1), conservé sur le serveur.
+    poste_code = models.CharField(max_length=10, blank=True, default="")
+    # Sur le serveur uniquement : numéro de la vente sur son PC d'origine,
+    # pour que la facture affiche le même numéro partout.
+    local_number = models.IntegerField(null=True, blank=True)
+
     class Meta:
         db_table = "sales"
         ordering = ["-created_at"]
 
+    def save(self, *args, **kwargs):
+        # À la création sur un PC de caisse, on note le code de ce poste.
+        if self._state.adding and not self.poste_code:
+            from django.conf import settings
+            self.poste_code = getattr(settings, "POSTE_CODE", "")
+        super().save(*args, **kwargs)
+
     @property
     def invoice_number(self):
-        return self.id
+        return self.invoice_code
 
     @property
     def invoice_code(self):
-        """Numéro de facture formaté pour affichage : FAC-<année>-<0000>."""
-        return f"FAC-{self.created_at.year}-{self.id:04d}"
+        """Numéro de facture affiché : FAC-<poste>-<année>-<0000>.
+        Les anciennes ventes (sans code poste) gardent FAC-<année>-<0000>."""
+        number = self.local_number or self.id
+        poste = f"{self.poste_code}-" if self.poste_code else ""
+        return f"FAC-{poste}{self.created_at.year}-{number:04d}"
 
     def __str__(self):
-        return f"Facture #{self.id}"
+        return f"Facture {self.invoice_code}"
 
 
 class SalePayment(models.Model):

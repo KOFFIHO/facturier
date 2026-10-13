@@ -1,4 +1,5 @@
 import os
+import sys
 import threading
 
 from django.apps import AppConfig
@@ -10,7 +11,13 @@ class CoreConfig(AppConfig):
     verbose_name = "Facturier - Cœur métier"
 
     def ready(self):
-        if os.environ.get("RUN_MAIN") != "true":
+        # La synchronisation automatique ne tourne que pendant "runserver"
+        # (jamais pendant migrate, createsuperuser...), et une seule fois :
+        # - avec rechargement auto : dans le processus enfant (RUN_MAIN=true) ;
+        # - avec --noreload (démarrage du poste de caisse) : directement.
+        if "runserver" not in sys.argv:
+            return
+        if "--noreload" not in sys.argv and os.environ.get("RUN_MAIN") != "true":
             return
 
         from django.conf import settings
