@@ -129,7 +129,7 @@ class PaymentMethod(models.TextChoices):
     MOOV_MONEY = "MOOV_MONEY", "Moov Money"
     CARTE = "CARTE", "Carte bancaire"
     CHEQUE = "CHEQUE", "Chèque"
-    AUTRE = "AUTRE", "Autre"
+    AUTRE = "AUTRE", "Wave"
 
 
 class DiscountType(models.TextChoices):

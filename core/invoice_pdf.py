@@ -23,7 +23,7 @@ PAYMENT_LABELS = {
     "MOOV_MONEY": "Moov Money",
     "CARTE": "Carte bancaire",
     "CHEQUE": "Chèque",
-    "AUTRE": "Autre",
+    "AUTRE": "Wave",
 }
 
 
