@@ -1,0 +1,186 @@
+{% extends "core/base.html" %}
+
+{% block title %}Commandes - Facturier{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid px-0">
+
+    <!-- =====================================================
+         TITRE
+    ====================================================== -->
+    <div class="d-flex align-items-center justify-content-between mb-4">
+        <div>
+            <h1 class="h4 mb-1">Commandes clients</h1>
+            <p class="text-muted mb-0">
+                Suivi des commandes, versements et livraisons
+            </p>
+        </div>
+        <a href="{% url 'commande_new' %}" class="btn btn-primary">
+            <i class="bi bi-plus-lg me-1"></i>
+            Nouvelle commande
+        </a>
+    </div>
+
+    {% if not company %}
+
+        <div class="alert alert-warning" role="alert">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            Créez d'abord une entreprise pour gérer des commandes.
+        </div>
+
+    {% else %}
+
+        <!-- =================================================
+             FILTRES
+        ================================================== -->
+        <div class="card shadow-sm mb-4">
+
+            <div class="card-body">
+
+                <form method="get" class="row g-3 align-items-end">
+
+                    <div class="col-12 col-lg-5">
+                        <label class="form-label">Rechercher</label>
+                        <input
+                            type="text"
+                            name="q"
+                            value="{{ query }}"
+                            class="form-control"
+                            placeholder="Nom ou téléphone du client..."
+                        >
+                    </div>
+
+                    <div class="col-12 col-lg-4">
+                        <label class="form-label">Statut</label>
+                        <select name="status" class="form-select">
+                            <option value="" {% if not status %}selected{% endif %}>Toutes les commandes</option>
+                            <option value="en_cours" {% if status == "en_cours" %}selected{% endif %}>En cours de livraison</option>
+                            <option value="livree" {% if status == "livree" %}selected{% endif %}>Entièrement livrées</option>
+                            <option value="solde_du" {% if status == "solde_du" %}selected{% endif %}>Solde restant dû</option>
+                        </select>
+                    </div>
+
+                    <div class="col-6 col-lg-2">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-search me-1"></i>
+                            Filtrer
+                        </button>
+                    </div>
+
+                    <div class="col-6 col-lg-1">
+                        <a href="{% url 'commandes_list' %}" class="btn btn-outline-secondary w-100">
+                            <i class="bi bi-x-circle"></i>
+                        </a>
+                    </div>
+
+                </form>
+
+            </div>
+
+        </div>
+
+
+        <!-- =================================================
+             LISTE
+        ================================================== -->
+        <div class="card shadow-sm">
+
+            <div class="card-header bg-body d-flex align-items-center justify-content-between">
+                <h2 class="h6 mb-0">
+                    <i class="bi bi-list-ul me-2 text-primary"></i>
+                    Liste des commandes
+                </h2>
+                <span class="badge text-bg-secondary">{{ page_obj.paginator.count }}</span>
+            </div>
+
+            <div class="card-body p-0">
+
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th scope="col">Commande</th>
+                                <th scope="col">Client</th>
+                                <th scope="col">Date</th>
+                                <th scope="col">Valeur</th>
+                                <th scope="col">Payé</th>
+                                <th scope="col">Reste à payer</th>
+                                <th scope="col" style="width: 160px;">Livraison</th>
+                                <th scope="col" class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in commandes %}
+                                <tr>
+                                    <td class="fw-semibold">{{ c.order_code }}</td>
+                                    <td>{{ c.client_name|default:"—" }}</td>
+                                    <td class="text-nowrap">{{ c.created_at|date:"d/m/Y" }}</td>
+                                    <td class="text-nowrap">{{ c.total_value|floatformat:0 }} F CFA</td>
+                                    <td class="text-nowrap">{{ c.total_paid|floatformat:0 }} F CFA</td>
+                                    <td class="text-nowrap">
+                                        {% if c.balance_due > 0 %}
+                                            <span class="text-danger fw-semibold">{{ c.balance_due|floatformat:0 }} F CFA</span>
+                                        {% else %}
+                                            <span class="badge text-bg-success">Soldée</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="progress" style="height: 8px;">
+                                            <div
+                                                class="progress-bar {% if c.is_fully_delivered %}bg-success{% else %}bg-info{% endif %}"
+                                                style="width: {{ c.delivery_rate }}%;"
+                                            ></div>
+                                        </div>
+                                        <small class="text-muted">{{ c.delivery_rate }}%</small>
+                                    </td>
+                                    <td class="text-end">
+                                        <a href="{% url 'commande_detail' c.id %}" class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-eye me-1"></i>
+                                            Détail
+                                        </a>
+                                    </td>
+                                </tr>
+                            {% empty %}
+                                <tr>
+                                    <td colspan="8" class="text-center text-muted py-4">
+                                        <i class="bi bi-inbox fs-4 d-block mb-2"></i>
+                                        Aucune commande.
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+            </div>
+
+            {% if page_obj.paginator.num_pages > 1 %}
+                <div class="card-footer bg-body">
+                    <nav>
+                        <ul class="pagination justify-content-center mb-0">
+                            {% if page_obj.has_previous %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}&q={{ query }}&status={{ status }}">Précédent</a>
+                                </li>
+                            {% endif %}
+                            <li class="page-item disabled">
+                                <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+                            </li>
+                            {% if page_obj.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.next_page_number }}&q={{ query }}&status={{ status }}">Suivant</a>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                </div>
+            {% endif %}
+
+        </div>
+
+    {% endif %}
+
+</div>
+
+{% endblock %}

@@ -1,0 +1,285 @@
+{% extends "core/base.html" %}
+
+{% block title %}Suivi des commandes - Facturier{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid px-0">
+
+    <!-- =====================================================
+         TITRE
+    ====================================================== -->
+    <div class="d-flex align-items-center justify-content-between mb-4">
+        <div>
+            <h1 class="h4 mb-1">Tableau de bord des commandes</h1>
+            <p class="text-muted mb-0">
+                Vue agrégée par article, budget, dépenses liées et niveau de satisfaction client
+            </p>
+        </div>
+        <a href="{% url 'commandes_list' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-list-ul me-1"></i>
+            Liste des commandes
+        </a>
+    </div>
+
+    {% if not company %}
+
+        <div class="alert alert-warning" role="alert">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            Créez d'abord une entreprise pour suivre des commandes.
+        </div>
+
+    {% else %}
+
+        <!-- =================================================
+             FILTRES
+        ================================================== -->
+        <div class="card shadow-sm mb-4">
+
+            <div class="card-body">
+
+                <form method="get" class="row g-3 align-items-end">
+
+                    <div class="col-12 col-md-2">
+                        <label class="form-label">Mois</label>
+                        <input
+                            type="month"
+                            name="month"
+                            value="{{ month }}"
+                            class="form-control"
+                        >
+                    </div>
+
+                    <div class="col-6 col-md-2">
+                        <label class="form-label">Date début</label>
+                        <input type="date" name="start_date" value="{{ start_date }}" class="form-control">
+                    </div>
+
+                    <div class="col-6 col-md-2">
+                        <label class="form-label">Date fin</label>
+                        <input type="date" name="end_date" value="{{ end_date }}" class="form-control">
+                    </div>
+
+                    <div class="col-12 col-md-3">
+                        <label class="form-label">Article</label>
+                        <select name="article" class="form-select">
+                            <option value="" {% if not article_filter %}selected{% endif %}>Tous les articles</option>
+                            {% for name in article_names %}
+                                <option value="{{ name }}" {% if name == article_filter %}selected{% endif %}>
+                                    {{ name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-6 col-md-2">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-search me-1"></i>
+                            Filtrer
+                        </button>
+                    </div>
+
+                    <div class="col-6 col-md-1">
+                        <a href="{% url 'commande_dashboard' %}" class="btn btn-outline-secondary w-100">
+                            <i class="bi bi-x-circle"></i>
+                        </a>
+                    </div>
+
+                </form>
+
+                <small class="text-muted">
+                    Le filtre par mois remplit automatiquement les dates ; l'intervalle de dates est prioritaire s'il est renseigné.
+                </small>
+
+            </div>
+
+        </div>
+
+
+        <!-- =================================================
+             CARTES
+        ================================================== -->
+        <div class="row g-3 mb-4">
+
+            <div class="col-6 col-lg-3">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <p class="text-muted small mb-1">Budget (valeur totale)</p>
+                        <p class="h5 mb-0">{{ budget|floatformat:0 }} F CFA</p>
+                        <small class="text-muted">{{ nb_commandes }} commande(s)</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6 col-lg-3">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <p class="text-muted small mb-1">Chiffre d'affaires (versé)</p>
+                        <p class="h5 mb-0 text-success">{{ chiffre_affaire|floatformat:0 }} F CFA</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6 col-lg-3">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <p class="text-muted small mb-1">Dépense globale (liée aux commandes)</p>
+                        <p class="h5 mb-0 text-danger">{{ depense_globale|floatformat:0 }} F CFA</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6 col-lg-3">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <p class="text-muted small mb-1">Solde en caisse</p>
+                        <p class="h5 mb-0 {% if solde_en_caisse < 0 %}text-danger{% else %}text-success{% endif %}">
+                            {{ solde_en_caisse|floatformat:0 }} F CFA
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+
+        <!-- =================================================
+             SATISFACTION CLIENT
+        ================================================== -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <p class="text-muted small mb-1">Taux de satisfaction client (articles livrés / commandés)</p>
+                <div class="progress" style="height: 14px;">
+                    <div
+                        class="progress-bar bg-success"
+                        style="width: {{ satisfaction_client }}%;"
+                    >
+                        {{ satisfaction_client }}%
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- =================================================
+             TABLEAU PAR ARTICLE
+        ================================================== -->
+        <div class="card shadow-sm mb-4">
+
+            <div class="card-header bg-body">
+                <h2 class="h6 mb-0">
+                    <i class="bi bi-bar-chart me-2 text-primary"></i>
+                    Détail par article
+                </h2>
+            </div>
+
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th scope="col">Article</th>
+                                <th scope="col">Valeur commandée</th>
+                                <th scope="col">Réduction</th>
+                                <th scope="col">Avances reçues</th>
+                                <th scope="col">Reste à payer</th>
+                                <th scope="col">Qté commandée</th>
+                                <th scope="col">Qté livrée</th>
+                                <th scope="col">Qté restante</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in article_rows %}
+                                <tr>
+                                    <td>{{ row.name }}</td>
+                                    <td class="text-nowrap">{{ row.valeur|floatformat:0 }} F CFA</td>
+                                    <td class="text-nowrap">
+                                        {% if row.reduction > 0 %}
+                                            <span class="text-danger">- {{ row.reduction|floatformat:0 }} F CFA</span>
+                                        {% else %}
+                                            —
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-nowrap">{{ row.avances|floatformat:0 }} F CFA</td>
+                                    <td class="text-nowrap">{{ row.reste_a_payer|floatformat:0 }} F CFA</td>
+                                    <td>{{ row.commandees }}</td>
+                                    <td>{{ row.livrees }}</td>
+                                    <td>
+                                        {% if row.reste_a_livrer > 0 %}
+                                            <span class="badge text-bg-warning text-dark">{{ row.reste_a_livrer }}</span>
+                                        {% else %}
+                                            <span class="badge text-bg-success">0</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% empty %}
+                                <tr>
+                                    <td colspan="8" class="text-center text-muted py-4">
+                                        Aucune donnée pour cette période.
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+
+        <!-- =================================================
+             DÉTAIL DES DÉPENSES COMPTÉES
+        ================================================== -->
+        <div class="card shadow-sm">
+
+            <div class="card-header bg-body">
+                <h2 class="h6 mb-0">
+                    <i class="bi bi-wallet2 me-2 text-primary"></i>
+                    Détail des dépenses comptées dans "Dépense globale"
+                </h2>
+            </div>
+
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th scope="col">Date</th>
+                                <th scope="col">Commande</th>
+                                <th scope="col">Type</th>
+                                <th scope="col">Libellé</th>
+                                <th scope="col">Montant</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for d in depenses_commandes %}
+                                <tr>
+                                    <td class="text-nowrap">{{ d.date|date:"d/m/Y" }}</td>
+                                    <td>
+                                        <a href="{% url 'commande_detail' d.commande.id %}">
+                                            {{ d.commande.order_code }}
+                                        </a>
+                                    </td>
+                                    <td>{{ d.type_depense }}</td>
+                                    <td>{{ d.label }}</td>
+                                    <td class="text-nowrap">{{ d.amount|floatformat:0 }} F CFA</td>
+                                </tr>
+                            {% empty %}
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted py-4">
+                                        Aucune dépense liée à une commande pour cette période.
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+    {% endif %}
+
+</div>
+
+{% endblock %}

@@ -1,0 +1,506 @@
+# Modèles de données du Facturier Automatique (Côte d'Ivoire - F CFA).
+# Architecture multi-entreprises : Company (une par entreprise gérée par
+# l'Admin), User (ADMIN global ou SELLER rattaché à une Company), Product
+# et Sale rattachés chacun à une Company précise.
+
+import uuid
+
+from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
+from django.contrib.auth.models import PermissionsMixin
+from django.core.validators import RegexValidator
+from django.db import models
+
+# Validateur réutilisable pour garantir exactement 10 chiffres (Format CI)
+phone_validator = RegexValidator(
+    regex=r'^\d{10}$',
+    message="Le numéro de téléphone doit contenir exactement 10 chiffres."
+)
+
+
+class Company(models.Model):
+    """Une entreprise gérée sur la plateforme (identité, logo, cachet, TVA)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=200)
+    address = models.CharField(max_length=255, null=True, blank=True)
+    phone = models.CharField(
+        max_length=10, 
+        validators=[phone_validator], 
+        null=True, 
+        blank=True
+    )
+    email = models.EmailField(null=True, blank=True)
+    website = models.CharField(max_length=200, null=True, blank=True)
+    tva_rate = models.FloatField(default=18)  # Taux de TVA en Côte d'Ivoire : 18% par défaut
+    logo = models.ImageField(upload_to="", null=True, blank=True)
+    stamp = models.ImageField(upload_to="", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "companies"
+        ordering = ["name"]
+        verbose_name_plural = "companies"
+
+    def __str__(self):
+        return self.name
+
+
+class UserManager(BaseUserManager):
+    """Manager personnalisé : l'identifiant de connexion est le numéro de téléphone."""
+
+    def create_user(self, phone_number, full_name, password=None, role="SELLER", company=None):
+        if not phone_number:
+            raise ValueError("Le numéro de téléphone est requis.")
+        user = self.model(phone_number=phone_number, full_name=full_name, role=role, company=company)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, phone_number, full_name, password=None):
+        user = self.create_user(phone_number, full_name, password, role=User.Role.ADMIN)
+        user.is_staff = True
+        user.is_superuser = True
+        user.save(using=self._db)
+        return user
+
+
+class User(AbstractBaseUser, PermissionsMixin):
+    """Utilisateur de la plateforme : Administrateur (global) ou Vendeur
+    (rattaché à une seule entreprise)."""
+
+    class Role(models.TextChoices):
+        ADMIN = "ADMIN", "Administrateur"
+        SELLER = "SELLER", "Gérant"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    full_name = models.CharField(max_length=150)
+    phone_number = models.CharField(
+        max_length=10, 
+        unique=True, 
+        validators=[phone_validator]
+    )
+    role = models.CharField(max_length=10, choices=Role.choices, default=Role.SELLER)
+    company = models.ForeignKey(
+        Company, null=True, blank=True, on_delete=models.SET_NULL, related_name="users"
+    )
+    is_active = models.BooleanField(default=True)
+    is_staff = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = UserManager()
+
+    USERNAME_FIELD = "phone_number"
+    REQUIRED_FIELDS = ["full_name"]
+
+    class Meta:
+        db_table = "users"
+
+    def __str__(self):
+        return f"{self.full_name} ({self.phone_number})"
+
+
+class Product(models.Model):
+    """Produit du catalogue / stock, rattaché à une entreprise précise."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="products")
+    name = models.CharField(max_length=200)
+    description = models.TextField(null=True, blank=True)
+    price = models.FloatField()  # Prix unitaire en F CFA
+    stock = models.IntegerField(default=0)
+    critical_threshold = models.IntegerField(default=5)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "products"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class PaymentMethod(models.TextChoices):
+    ESPECES = "ESPECES", "Espèces"
+    ORANGE_MONEY = "ORANGE_MONEY", "Orange Money"
+    MTN_MONEY = "MTN_MONEY", "MTN Money"
+    MOOV_MONEY = "MOOV_MONEY", "Moov Money"
+    CARTE = "CARTE", "Carte bancaire"
+    CHEQUE = "CHEQUE", "Chèque"
+    AUTRE = "AUTRE", "Wave"
+
+
+class DiscountType(models.TextChoices):
+    NONE = "NONE", "Aucune réduction"
+    PERCENTAGE = "PERCENTAGE", "Pourcentage"
+    AMOUNT = "AMOUNT", "Montant fixe"
+
+
+class Service(models.Model):
+    """Prestation proposée par l'entreprise (catalogue).
+    `default_price` est un prix indicatif : il reste modifiable au moment de
+    la vente, car le prix d'un service n'est pas fixe."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="services")
+    name = models.CharField(max_length=200)
+    description = models.TextField(null=True, blank=True)
+    default_price = models.FloatField()
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "services"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class SaleType(models.TextChoices):
+    PRODUCT = "PRODUCT", "Produits"
+    SERVICE = "SERVICE", "Services"
+    MIXED = "MIXED", "Mixte (produits + services)"
+
+
+class Sale(models.Model):
+    """Vente / facture générée depuis la Caisse. `id` sert de numéro de facture."""
+
+    company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name="sales")
+    sale_type = models.CharField(max_length=10, choices=SaleType.choices, default=SaleType.PRODUCT)
+    client_name = models.CharField(max_length=200, null=True, blank=True)
+    client_phone = models.CharField(
+        max_length=10, 
+        validators=[phone_validator], 
+        null=True, 
+        blank=True
+    )
+    notes = models.TextField(null=True, blank=True)
+
+    discount_type = models.CharField(max_length=12, choices=DiscountType.choices, default=DiscountType.NONE)
+    discount_value = models.FloatField(default=0)
+    discount_amount = models.FloatField(default=0)
+
+    sub_total = models.FloatField()
+    tva_amount = models.FloatField()
+    total = models.FloatField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    seller = models.ForeignKey(User, related_name="sales", on_delete=models.SET_NULL, null=True, blank=True)
+    seller_name = models.CharField(max_length=150, blank=True, default="")  # copie du nom, pour le cloud (jamais de compte/mot de passe synchronisé)
+
+    # --- Plusieurs PC de caisse vers un seul serveur en ligne ---
+    # Identifiant unique de la vente, le même sur le PC et sur le serveur.
+    # C'est lui (et non `id`) qui sert à reconnaître la vente lors de la
+    # synchronisation : deux PC peuvent avoir chacun leur vente n°12 sans
+    # que l'une écrase l'autre.
+    sync_uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    # Code du poste qui a créé la vente (ex : B1C1), conservé sur le serveur.
+    poste_code = models.CharField(max_length=10, blank=True, default="")
+    # Sur le serveur uniquement : numéro de la vente sur son PC d'origine,
+    # pour que la facture affiche le même numéro partout.
+    local_number = models.IntegerField(null=True, blank=True)
+
+    class Meta:
+        db_table = "sales"
+        ordering = ["-created_at"]
+
+    def save(self, *args, **kwargs):
+        # À la création sur un PC de caisse, on note le code de ce poste.
+        if self._state.adding and not self.poste_code:
+            from django.conf import settings
+            self.poste_code = getattr(settings, "POSTE_CODE", "")
+        super().save(*args, **kwargs)
+
+    @property
+    def invoice_number(self):
+        return self.invoice_code
+
+    @property
+    def invoice_code(self):
+        """Numéro de facture affiché : FAC-<poste>-<année>-<0000>.
+        Les anciennes ventes (sans code poste) gardent FAC-<année>-<0000>."""
+        number = self.local_number or self.id
+        poste = f"{self.poste_code}-" if self.poste_code else ""
+        return f"FAC-{poste}{self.created_at.year}-{number:04d}"
+
+    def __str__(self):
+        return f"Facture {self.invoice_code}"
+
+
+class SalePayment(models.Model):
+    """Ligne de règlement d'une vente (permet de combiner plusieurs modes de paiement)."""
+
+    sale = models.ForeignKey(Sale, related_name="payments", on_delete=models.CASCADE)
+    method = models.CharField(max_length=15, choices=PaymentMethod.choices)
+    amount = models.FloatField()
+
+    class Meta:
+        db_table = "sale_payments"
+
+
+class CashSession(models.Model):
+    """Session de caisse d'un vendeur : heure d'ouverture + heure de
+    fermeture prévue (prolongeable), avec fermeture automatique à échéance."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="cash_sessions")
+    seller = models.ForeignKey(User, on_delete=models.CASCADE, related_name="cash_sessions")
+    opened_at = models.DateTimeField()
+    planned_closed_at = models.DateTimeField()
+    actual_closed_at = models.DateTimeField(null=True, blank=True)
+    is_closed = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "cash_sessions"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Session de {self.seller.full_name} ({self.opened_at:%d/%m/%Y %H:%M})"
+
+
+class SaleItem(models.Model):
+    """Ligne d'une vente : soit un produit, soit une prestation du catalogue,
+    soit une ligne libre (désignation et prix saisis à la volée).
+    `is_gift` : offert. `discount_amount` : remise sur cette ligne."""
+
+    sale = models.ForeignKey(Sale, related_name="items", on_delete=models.CASCADE)
+    product = models.ForeignKey(Product, related_name="sale_items", on_delete=models.PROTECT, null=True, blank=True)
+    service = models.ForeignKey(Service, related_name="sale_items", on_delete=models.PROTECT, null=True, blank=True)
+    label = models.CharField(max_length=200, blank=True)
+    quantity = models.IntegerField()
+    price = models.FloatField()
+    is_gift = models.BooleanField(default=False)
+    discount_amount = models.FloatField(default=0)
+
+    class Meta:
+        db_table = "sale_items"
+
+    @property
+    def designation(self):
+        """Libellé à afficher : produit, prestation du catalogue, ou ligne libre."""
+        if self.product_id:
+            return self.product.name
+        if self.service_id:
+            return self.service.name
+        return self.label or "Prestation"
+
+
+
+class Employee(models.Model):
+    """Membre du personnel pouvant être lié à une dépense, SANS avoir
+    nécessairement de compte de connexion (contrairement à User)."""
+
+    class Role(models.TextChoices):
+        EMPLOYEE = "EMPLOYEE", "Employé"
+        GERANT = "GERANT", "Gérant"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="employees")
+    full_name = models.CharField(max_length=150)
+    role = models.CharField(max_length=10, choices=Role.choices, default=Role.EMPLOYEE)
+    phone = models.CharField(max_length=30, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "employees"
+        ordering = ["full_name"]
+
+    def __str__(self):
+        return f"{self.full_name} ({self.get_role_display()})"
+
+
+
+class Depense(models.Model):
+    """Dépense de l'entreprise (achats, factures, charges...), utilisée pour
+    calculer le bénéfice (CA - dépenses) sur le tableau de bord."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="depenses")
+    date = models.DateField()
+    type_depense = models.CharField(max_length=100)
+    label = models.CharField(max_length=200)
+    employee = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True, related_name="depenses")
+    amount = models.FloatField()
+    comment = models.CharField(max_length=255, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+
+    class Meta:
+        db_table = "depenses"
+        ordering = ["-date", "-created_at"]
+
+    def __str__(self):
+        return f"{self.label} ({self.amount} F CFA)"
+
+
+class Approvisionnement(models.Model):
+    """Entrée de stock (réapprovisionnement) d'un produit : incrémente le
+    stock du produit et reste consultable dans un historique dédié."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="approvisionnements")
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name="approvisionnements")
+    quantity = models.IntegerField()
+    unit_cost = models.FloatField(null=True, blank=True)
+    date = models.DateField()
+    comment = models.CharField(max_length=255, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "approvisionnements"
+        ordering = ["-date", "-created_at"]
+
+    def __str__(self):
+        return f"+{self.quantity} {self.product.name}"
+
+class SyncState(models.Model):
+    """Mémorise, par type de donnée, l'horodatage de la dernière
+    synchronisation réussie vers le serveur en ligne (cloud)."""
+
+    key = models.CharField(max_length=50, unique=True)
+    last_synced_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "sync_state"
+
+    def __str__(self):
+        return f"{self.key} -> {self.last_synced_at}"
+
+
+
+
+# ============================================================================
+# COMMANDES CLIENT (paiement échelonné + livraison partielle)
+# ============================================================================
+
+class Commande(models.Model):
+    """Commande client pouvant contenir plusieurs articles différents.
+    Contrairement à une vente Caisse, aucun paiement complet n'est requis
+    à la création : le client verse des avances au fil du temps (nombre
+    illimité, dates libres) et la livraison peut être partielle, étalée
+    dans le temps elle aussi."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name="commandes")
+    client_name = models.CharField(max_length=200, null=True, blank=True)
+    client_phone = models.CharField(max_length=10, validators=[phone_validator], null=True, blank=True)
+    notes = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    seller = models.ForeignKey(
+        User, related_name="commandes", on_delete=models.SET_NULL, null=True, blank=True
+    )
+    seller_name = models.CharField(max_length=150, blank=True, default="")
+
+    class Meta:
+        db_table = "commandes"
+        ordering = ["-created_at"]
+
+    @property
+    def order_code(self):
+        return f"CMD-{self.created_at.year}-{self.id.hex[:8].upper()}"
+
+    @property
+    def total_value(self):
+        return sum(item.line_total for item in self.items.all())
+
+    @property
+    def total_paid(self):
+        return sum(a.amount for a in self.avances.all())
+
+    @property
+    def balance_due(self):
+        return max(0.0, self.total_value - self.total_paid)
+
+    @property
+    def total_quantity_ordered(self):
+        return sum(item.quantity_ordered for item in self.items.all())
+
+    @property
+    def total_quantity_delivered(self):
+        return sum(item.quantity_delivered for item in self.items.all())
+
+    @property
+    def is_fully_paid(self):
+        return self.balance_due <= 0
+
+    @property
+    def is_fully_delivered(self):
+        items = list(self.items.all())
+        if not items:
+            return False
+        return all(item.quantity_delivered >= item.quantity_ordered for item in items)
+
+    @property
+    def delivery_rate(self):
+        ordered = self.total_quantity_ordered
+        if ordered <= 0:
+            return 0
+        return min(100, round(self.total_quantity_delivered / ordered * 100))
+
+    def __str__(self):
+        return f"Commande {self.order_code}"
+
+
+class CommandeItem(models.Model):
+    commande = models.ForeignKey(Commande, related_name="items", on_delete=models.CASCADE)
+    product = models.ForeignKey(Product, related_name="commande_items", on_delete=models.PROTECT)
+    quantity_ordered = models.IntegerField()
+    quantity_delivered = models.IntegerField(default=0)
+    unit_price = models.FloatField()
+
+    class Meta:
+        db_table = "commande_items"
+
+    @property
+    def quantity_remaining(self):
+        return max(0, self.quantity_ordered - self.quantity_delivered)
+
+    @property
+    def line_total(self):
+        return self.quantity_ordered * self.unit_price
+
+    @property
+    def is_delivered(self):
+        return self.quantity_delivered >= self.quantity_ordered
+
+    def __str__(self):
+        return f"{self.quantity_ordered} x {self.product.name}"
+
+
+class CommandeAvance(models.Model):
+    """Un versement (avance) du client sur sa commande : nombre illimité,
+    dates libres, aucune structure 1ère/2ième/3ième imposée."""
+
+    commande = models.ForeignKey(Commande, related_name="avances", on_delete=models.CASCADE)
+    amount = models.FloatField()
+    method = models.CharField(max_length=15, choices=PaymentMethod.choices, default=PaymentMethod.ESPECES)
+    date = models.DateField()
+    comment = models.CharField(max_length=255, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "commande_avances"
+        ordering = ["date", "created_at"]
+
+
+class CommandeLivraison(models.Model):
+    """Une remise partielle (ou totale) d'articles au client, sur une
+    ligne de commande précise."""
+
+    commande_item = models.ForeignKey(CommandeItem, related_name="livraisons", on_delete=models.CASCADE)
+    quantity = models.IntegerField()
+    date = models.DateField()
+    comment = models.CharField(max_length=255, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "commande_livraisons"
+        ordering = ["date", "created_at"]

@@ -17,6 +17,7 @@
 #   - Sale
 #   - Depense
 #   - Approvisionnement
+#   - Commande (+ CommandeItem, CommandeAvance, CommandeLivraison)
 
 
 import base64
@@ -30,6 +31,10 @@ from django.utils import timezone
 
 from .models import (
     Approvisionnement,
+    Commande,
+    CommandeAvance,
+    CommandeItem,
+    CommandeLivraison,
     Company,
     Depense,
     Employee,
@@ -57,6 +62,7 @@ SYNC_KEYS = [
     "sales",
     "depenses",
     "approvisionnements",
+    "commandes",
 ]
 
 
@@ -284,6 +290,12 @@ def _serialize_depense(d):
             if d.employee_id
             else None
         ),
+
+        "commande_id": (
+            str(d.commande_id)
+            if d.commande_id
+            else None
+        ),
     }
 
 
@@ -305,6 +317,76 @@ def _serialize_approvisionnement(a):
 
         "date": a.date.isoformat(),
         "comment": a.comment,
+    }
+
+
+def _serialize_commande(cmd):
+    """
+    Commande client (paiement échelonné + livraison partielle).
+
+    Commande possède updated_at (mis à jour manuellement à chaque avance
+    ou livraison) : les créations ET les modifications sont synchronisées.
+
+    Le compte User du vendeur n'est jamais envoyé, seul seller_name l'est
+    (même principe que pour les ventes).
+    """
+
+    return {
+        "id": str(cmd.id),
+        "company_id": str(cmd.company_id),
+
+        "client_name": cmd.client_name,
+        "client_phone": cmd.client_phone,
+        "notes": cmd.notes,
+
+        "expected_delivery_date": (
+            cmd.expected_delivery_date.isoformat() if cmd.expected_delivery_date else None
+        ),
+
+        "discount_type": cmd.discount_type,
+        "discount_value": cmd.discount_value,
+        "discount_amount": cmd.discount_amount,
+
+        "seller_name": cmd.seller_name,
+
+        "created_at": _iso(cmd.created_at),
+
+        "items": [
+            {
+                "product_id": (
+                    str(item.product_id)
+                    if item.product_id
+                    else None
+                ),
+                "label": item.label,
+                "quantity_ordered": item.quantity_ordered,
+                "quantity_delivered": item.quantity_delivered,
+                "unit_price": item.unit_price,
+                "discount_amount": item.discount_amount,
+
+                "livraisons": [
+                    {
+                        "quantity": l.quantity,
+                        "date": l.date.isoformat(),
+                        "comment": l.comment,
+                        "created_at": _iso(l.created_at),
+                    }
+                    for l in item.livraisons.all()
+                ],
+            }
+            for item in cmd.items.all()
+        ],
+
+        "avances": [
+            {
+                "amount": a.amount,
+                "method": a.method,
+                "date": a.date.isoformat(),
+                "comment": a.comment,
+                "created_at": _iso(a.created_at),
+            }
+            for a in cmd.avances.all()
+        ],
     }
 
 
@@ -482,6 +564,25 @@ def collect_pending_payload():
     payload["approvisionnements"] = [
         _serialize_approvisionnement(approvisionnement)
         for approvisionnement in qs
+    ]
+
+
+    # ========================================================================
+    # COMMANDES (paiement échelonné)
+    # ========================================================================
+
+    since = _get_last_synced("commandes")
+
+    qs = Commande.objects.prefetch_related("items__livraisons", "avances")
+
+    if since:
+        qs = qs.filter(
+            updated_at__gt=since
+        )
+
+    payload["commandes"] = [
+        _serialize_commande(commande)
+        for commande in qs
     ]
 
 

@@ -65,6 +65,15 @@ urlpatterns = [
     path("employes/", views.employees_list_view, name="employees_list"),
     path("employes/<uuid:employee_id>/desactiver/", views.employee_deactivate_view, name="employee_deactivate"),
 
+    # Commandes (paiement échelonné + livraison partielle)
+    path("commandes/", views.commandes_list_view, name="commandes_list"),
+    path("commandes/nouvelle/", views.commande_new_view, name="commande_new"),
+    path("commandes/tableau-de-bord/", views.commande_dashboard_view, name="commande_dashboard"),
+    path("commandes/<uuid:commande_id>/", views.commande_detail_view, name="commande_detail"),
+    path("commandes/<uuid:commande_id>/supprimer/", views.commande_delete_view, name="commande_delete"),
+    path("commandes/<uuid:commande_id>/avances/<int:avance_id>/recu/", views.commande_avance_receipt_view, name="commande_avance_receipt"),
+    path("commandes/<uuid:commande_id>/avances/<int:avance_id>/recu/pdf/", views.commande_avance_receipt_pdf_view, name="commande_avance_receipt_pdf"),
+
     # Fichiers uploadés (logo, cachet) : accès protégé par connexion
     path("uploads/<path:path>", views.media_view, name="media"),
 ]

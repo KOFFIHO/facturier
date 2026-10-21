@@ -164,6 +164,27 @@
                         </div>
 
 
+                        <!-- Commande liée -->
+                        <div class="col-12 col-md-6 col-xl-3">
+
+                            <label
+                                for="{{ form.commande.id_for_label }}"
+                                class="form-label"
+                            >
+                                Commande liée (optionnel)
+                            </label>
+
+                            {{ form.commande }}
+
+                            {% if form.commande.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.commande.errors }}
+                                </div>
+                            {% endif %}
+
+                        </div>
+
+
                         <!-- Commentaire -->
                         <div class="col-12, col-md-6 col-xl-3">
 
@@ -386,6 +407,7 @@
                                 <th scope="col">Objet de dépense</th>
                                 <th scope="col">Montant</th>
                                 <th scope="col">Demandé par</th>
+                                <th scope="col">Commande liée</th>
                                 <th scope="col">Commentaire</th>
                                 <th scope="col" class="text-end">
                                     Actions
@@ -419,6 +441,16 @@
 
                                     <td>
                                         {% if d.employee %}{{ d.employee.full_name }}{% else %}—{% endif %}
+                                    </td>
+
+                                    <td>
+                                        {% if d.commande %}
+                                            <a href="{% url 'commande_detail' d.commande.id %}">
+                                                {{ d.commande.order_code }}
+                                            </a>
+                                        {% else %}
+                                            —
+                                        {% endif %}
                                     </td>
 
                                     <td>
@@ -457,7 +489,7 @@
                                 <tr>
 
                                     <td
-                                        colspan="6"
+                                        colspan="7"
                                         class="text-center text-muted py-4"
                                     >
                                         <i class="bi bi-inbox fs-4 d-block mb-2"></i>

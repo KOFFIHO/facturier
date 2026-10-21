@@ -323,6 +323,9 @@ class Depense(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="depenses")
+    commande = models.ForeignKey(
+        "Commande", on_delete=models.SET_NULL, null=True, blank=True, related_name="depenses"
+    )
     date = models.DateField()
     type_depense = models.CharField(max_length=100)
     label = models.CharField(max_length=200)
@@ -373,3 +376,180 @@ class SyncState(models.Model):
 
     def __str__(self):
         return f"{self.key} -> {self.last_synced_at}"
+
+
+# ============================================================================
+# COMMANDES CLIENT (paiement échelonné + livraison partielle)
+# ============================================================================
+
+class Commande(models.Model):
+    """Commande client pouvant contenir plusieurs articles différents.
+    Contrairement à une vente Caisse, aucun paiement complet n'est requis
+    à la création : le client verse des avances au fil du temps (nombre
+    illimité, dates libres) et la livraison peut être partielle, étalée
+    dans le temps elle aussi."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name="commandes")
+    client_name = models.CharField(max_length=200, null=True, blank=True)
+    client_phone = models.CharField(max_length=10, validators=[phone_validator], null=True, blank=True)
+    notes = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)  # mis à jour à chaque avance/livraison, pour la synchro
+    seller = models.ForeignKey(
+        User, related_name="commandes", on_delete=models.SET_NULL, null=True, blank=True
+    )
+    seller_name = models.CharField(max_length=150, blank=True, default="")
+
+    # Date de livraison prévue, choisie librement à la création (facultative).
+    expected_delivery_date = models.DateField(null=True, blank=True)
+
+    # Réduction globale sur l'ensemble de la commande (en plus des
+    # réductions éventuelles déjà appliquées ligne par ligne).
+    discount_type = models.CharField(max_length=12, choices=DiscountType.choices, default=DiscountType.NONE)
+    discount_value = models.FloatField(default=0)
+    discount_amount = models.FloatField(default=0)
+
+    class Meta:
+        db_table = "commandes"
+        ordering = ["-created_at"]
+
+    @property
+    def order_code(self):
+        return f"CMD-{self.created_at.year}-{self.id.hex[:8].upper()}"
+
+    @property
+    def items_subtotal(self):
+        """Somme des lignes (après réduction éventuelle de chaque ligne),
+        AVANT application de la réduction globale de la commande."""
+        return sum(item.line_total for item in self.items.all())
+
+    @property
+    def total_value(self):
+        """Valeur totale de la commande après réduction globale."""
+        return max(0.0, self.items_subtotal - self.discount_amount)
+
+    @property
+    def total_paid(self):
+        return sum(a.amount for a in self.avances.all())
+
+    @property
+    def balance_due(self):
+        return max(0.0, self.total_value - self.total_paid)
+
+    @property
+    def total_quantity_ordered(self):
+        return sum(item.quantity_ordered for item in self.items.all())
+
+    @property
+    def total_quantity_delivered(self):
+        return sum(item.quantity_delivered for item in self.items.all())
+
+    @property
+    def is_fully_paid(self):
+        return self.balance_due <= 0
+
+    @property
+    def is_fully_delivered(self):
+        items = list(self.items.all())
+        if not items:
+            return False
+        return all(item.quantity_delivered >= item.quantity_ordered for item in items)
+
+    @property
+    def delivery_rate(self):
+        ordered = self.total_quantity_ordered
+        if ordered <= 0:
+            return 0
+        return min(100, round(self.total_quantity_delivered / ordered * 100))
+
+    @property
+    def actual_delivery_date(self):
+        """Date de livraison effective : renseignée uniquement lorsque
+        TOUS les articles de la commande ont été intégralement livrés.
+        C'est alors la date de la toute dernière livraison enregistrée."""
+        if not self.is_fully_delivered:
+            return None
+        dates = [
+            livraison.date
+            for item in self.items.all()
+            for livraison in item.livraisons.all()
+        ]
+        return max(dates) if dates else None
+
+    def __str__(self):
+        return f"Commande {self.order_code}"
+
+
+class CommandeItem(models.Model):
+    """Ligne de commande : soit un produit du catalogue (avec suivi de
+    stock/désignation automatique), soit un article saisi à la main
+    (désignation libre, hors catalogue — ex. une pièce sur mesure)."""
+
+    commande = models.ForeignKey(Commande, related_name="items", on_delete=models.CASCADE)
+    product = models.ForeignKey(
+        Product, related_name="commande_items", on_delete=models.PROTECT, null=True, blank=True
+    )
+    label = models.CharField(max_length=200, blank=True)
+    quantity_ordered = models.IntegerField()
+    quantity_delivered = models.IntegerField(default=0)
+    unit_price = models.FloatField()
+    discount_amount = models.FloatField(default=0)  # remise fixe (F CFA) appliquée sur la ligne
+
+    class Meta:
+        db_table = "commande_items"
+
+    @property
+    def designation(self):
+        """Libellé à afficher : produit du catalogue, ou saisie libre."""
+        return self.product.name if self.product_id else (self.label or "Article")
+
+    @property
+    def quantity_remaining(self):
+        return max(0, self.quantity_ordered - self.quantity_delivered)
+
+    @property
+    def raw_total(self):
+        return self.quantity_ordered * self.unit_price
+
+    @property
+    def line_total(self):
+        return max(0.0, self.raw_total - self.discount_amount)
+
+    @property
+    def is_delivered(self):
+        return self.quantity_delivered >= self.quantity_ordered
+
+    def __str__(self):
+        return f"{self.quantity_ordered} x {self.designation}"
+
+
+class CommandeAvance(models.Model):
+    """Un versement (avance) du client sur sa commande : nombre illimité,
+    dates libres, aucune structure 1ère/2ième/3ième imposée."""
+
+    commande = models.ForeignKey(Commande, related_name="avances", on_delete=models.CASCADE)
+    amount = models.FloatField()
+    method = models.CharField(max_length=15, choices=PaymentMethod.choices, default=PaymentMethod.ESPECES)
+    date = models.DateField()
+    comment = models.CharField(max_length=255, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "commande_avances"
+        ordering = ["date", "created_at"]
+
+
+class CommandeLivraison(models.Model):
+    """Une remise partielle (ou totale) d'articles au client, sur une
+    ligne de commande précise."""
+
+    commande_item = models.ForeignKey(CommandeItem, related_name="livraisons", on_delete=models.CASCADE)
+    quantity = models.IntegerField()
+    date = models.DateField()
+    comment = models.CharField(max_length=255, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "commande_livraisons"
+        ordering = ["date", "created_at"]

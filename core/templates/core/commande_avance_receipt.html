@@ -1,0 +1,147 @@
+{% extends "core/base.html" %}
+
+{% block title %}Reçu de versement - {{ commande.order_code }}{% endblock %}
+
+{% block content %}
+
+<div class="invoice-actions no-print">
+  <a href="{% url 'commande_detail' commande.id %}" class="text-muted" style="font-size:13px;">&larr; Retour à la commande</a>
+  <div class="d-flex gap-2">
+    <button type="button" onclick="window.print(); return false;" class="btn btn-outline-secondary btn-sm">🖨 Imprimer (A5)</button>
+    <a href="{% url 'commande_avance_receipt_pdf' commande.id avance.id %}" class="btn btn-primary btn-sm">⇩ Télécharger le PDF</a>
+    {% if whatsapp_phone %}
+      <a
+        href="https://wa.me/225{{ whatsapp_phone }}?text={{ whatsapp_text|urlencode }}"
+        target="_blank"
+        rel="noopener"
+        class="btn btn-outline-success btn-sm"
+      >
+        <i class="bi bi-whatsapp"></i> WhatsApp
+      </a>
+    {% endif %}
+  </div>
+</div>
+
+{% if whatsapp_phone %}
+    <div class="alert alert-info no-print" style="max-width: 420px; margin: 0 auto 16px auto;">
+        <i class="bi bi-info-circle me-2"></i>
+        Pensez à télécharger le PDF puis à le joindre manuellement dans la conversation WhatsApp :
+        les navigateurs ne permettent pas de joindre un fichier automatiquement.
+    </div>
+{% endif %}
+
+<!-- On force data-bs-theme="light" pour que le texte reste sombre et lisible en mode dark,
+     comme pour la facture de vente : même design A5, garanti sur une seule page. -->
+<div class="invoice-box" data-bs-theme="light" style="background-color: #ffffff; color: #212529;">
+
+  <div class="invoice-header" style="justify-content:flex-end;">
+    <div class="invoice-logo">
+      {% if company.logo %}<img src="{{ company.logo.url }}" alt="Logo" onerror="this.replaceWith(Object.assign(document.createElement('span'), {style:'font-size:7px;color:#b91c1c;text-align:center;', textContent:'Logo introuvable'}));">{% else %}<span style="font-size:7px; font-style:italic; text-align:center;">Votre logo ici</span>{% endif %}
+    </div>
+  </div>
+
+  <div class="invoice-company">
+    <h1>{{ company.name|default:"Nom de votre entreprise" }}</h1>
+    <p>{{ company.address|default:"Adresse | Ville | Côte d'Ivoire" }}</p>
+    <p>Tél : {{ company.phone|default:"00 00 00 00 00" }}</p>
+  </div>
+
+  <p style="font-size:12px; font-weight:700; text-align:center; text-transform:uppercase; margin:0 0 8px;">
+    Reçu de versement
+  </p>
+
+  <div class="invoice-meta">
+      <span><strong>Commande :</strong> {{ commande.order_code }}</span>
+      <span><strong>Reçu émis le :</strong> {{ avance.created_at|date:"d/m/Y à H:i" }}</span>
+  </div>
+
+  <p style="font-size:10px; font-weight:700; margin:0 0 4px;">CLIENT</p>
+  <div class="invoice-box-block">
+    <div><strong>Nom :</strong> {{ commande.client_name|default:"Client" }}</div>
+    <div><strong>Téléphone :</strong> {{ commande.client_phone|default:"-" }}</div>
+    {% if commande.expected_delivery_date %}
+      <div><strong>Livraison prévue :</strong> {{ commande.expected_delivery_date|date:"d/m/Y" }}</div>
+    {% endif %}
+    {% if commande.actual_delivery_date %}
+      <div style="color:#15803d;"><strong>Livraison effective :</strong> {{ commande.actual_delivery_date|date:"d/m/Y" }}</div>
+    {% endif %}
+  </div>
+
+  <p style="font-size:10px; font-weight:700; margin:0 0 4px;">ARTICLES COMMANDÉS</p>
+  <table class="invoice-table">
+    <thead><tr><th>Qté</th><th>Désignation</th><th>P.U.</th><th>Réduction</th><th>Total</th></tr></thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td style="text-align:center;">{{ item.quantity_ordered }}</td>
+        <td style="text-align:center;">{{ item.designation }}</td>
+        <td style="text-align:center;">{{ item.unit_price|floatformat:0 }}</td>
+        <td style="text-align:center;">
+          {% if item.discount_amount > 0 %}
+            <span style="color:#dc2626;">- {{ item.discount_amount|floatformat:0 }}</span>
+          {% else %}
+            —
+          {% endif %}
+        </td>
+        <td style="text-align:center;">{{ item.line_total|floatformat:0 }} F CFA</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <p style="font-size:10px; font-weight:700; margin:0 0 4px;">HISTORIQUE DES VERSEMENTS</p>
+  <table class="invoice-table">
+    <thead><tr><th>Date</th><th>Heure</th><th>Mode</th><th>Montant</th></tr></thead>
+    <tbody>
+      {% for a in avances_history %}
+      <tr {% if a.id == avance.id %}style="background:#dbeafe; font-weight:700;"{% endif %}>
+        <td style="text-align:center;">{{ a.date|date:"d/m/Y" }}</td>
+        <td style="text-align:center;">{{ a.created_at|date:"H:i" }}</td>
+        <td style="text-align:center;">{{ a.get_method_display }}</td>
+        <td style="text-align:center;">{{ a.amount|floatformat:0 }} F CFA</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div style="font-size: 11px; margin-bottom: 12px; width: 100%;">
+
+    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 3px 0;">
+      <span>Sous-total articles</span>
+      <span>{{ commande.items_subtotal|floatformat:0 }} F CFA</span>
+    </div>
+
+    {% if commande.discount_amount > 0 %}
+    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 3px 0; color: #dc2626;">
+      <span>Réduction globale{% if commande.discount_type == "PERCENTAGE" %} ({{ commande.discount_value|floatformat:0 }}%){% endif %}</span>
+      <span>- {{ commande.discount_amount|floatformat:0 }} F CFA</span>
+    </div>
+    {% endif %}
+
+    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 3px 0;">
+      <span>Valeur totale de la commande</span>
+      <span>{{ commande.total_value|floatformat:0 }} F CFA</span>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 3px 0; color: #15803d;">
+      <span>Total payé à ce jour</span>
+      <span>{{ commande.total_paid|floatformat:0 }} F CFA</span>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding-top: 5px; margin-top: 3px; border-top: 1px solid #e5e7eb; font-weight: 700; font-size: 14px; {% if commande.balance_due > 0 %}color: #dc2626;{% endif %}">
+      <span>Reste à payer</span>
+      <span>{{ commande.balance_due|floatformat:0 }} F CFA</span>
+    </div>
+
+  </div>
+
+  <div class="invoice-signature">
+    <span style="font-weight:700; flex-shrink:0;">Signature / Cachet :</span>
+    {% if company.stamp %}<img src="{{ company.stamp.url }}" alt="Cachet" onerror="this.replaceWith(Object.assign(document.createElement('span'), {style:'font-size:9px;color:#b91c1c;', textContent:'Cachet introuvable'}));">{% endif %}
+  </div>
+
+  <p class="invoice-footer">Merci pour votre confiance !</p>
+
+</div>
+
+{% endblock %}

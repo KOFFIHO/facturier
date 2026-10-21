@@ -1,0 +1,441 @@
+{% extends "core/base.html" %}
+
+{% block title %}Nouvelle commande - Facturier{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid px-0">
+
+    <!-- =====================================================
+         TITRE
+    ====================================================== -->
+    <div class="d-flex align-items-center justify-content-between mb-4">
+        <div>
+            <h1 class="h4 mb-1">Nouvelle commande</h1>
+            <p class="text-muted mb-0">
+                Ajoutez des articles du catalogue ou saisissez-en manuellement, puis validez la commande.
+            </p>
+        </div>
+        <a href="{% url 'commandes_list' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i>
+            Retour aux commandes
+        </a>
+    </div>
+
+    {% if not company %}
+
+        <div class="alert alert-warning" role="alert">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            Créez d'abord une entreprise pour saisir des commandes.
+        </div>
+
+    {% else %}
+
+        <div class="row g-4">
+
+            <!-- =============================================
+                 COLONNE GAUCHE : AJOUT D'ARTICLES
+            ============================================== -->
+            <div class="col-12 col-lg-7">
+
+                <!-- Produits du catalogue -->
+                <div class="card shadow-sm mb-4">
+
+                    <div class="card-header bg-body">
+                        <h2 class="h6 mb-0">
+                            <i class="bi bi-box-seam me-2 text-primary"></i>
+                            Produits du catalogue
+                        </h2>
+                    </div>
+
+                    <div class="card-body">
+
+                        <form method="get" class="mb-3">
+                            <div class="input-group">
+                                <input
+                                    type="text"
+                                    name="q"
+                                    value="{{ query }}"
+                                    class="form-control"
+                                    placeholder="Rechercher un produit..."
+                                >
+                                <button type="submit" class="btn btn-outline-secondary">
+                                    <i class="bi bi-search"></i>
+                                </button>
+                                {% if query %}
+                                    <a href="{% url 'commande_new' %}" class="btn btn-outline-secondary">
+                                        <i class="bi bi-x-circle"></i>
+                                    </a>
+                                {% endif %}
+                            </div>
+                        </form>
+
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Produit</th>
+                                        <th scope="col">Prix</th>
+                                        <th scope="col">Stock</th>
+                                        <th scope="col" style="width: 220px;">Ajouter</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for p in products_page %}
+                                        <tr>
+                                            <td>{{ p.name }}</td>
+                                            <td class="text-nowrap">{{ p.price|floatformat:0 }} F CFA</td>
+                                            <td>{{ p.stock }}</td>
+                                            <td>
+                                                <form method="post" class="d-flex gap-1">
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="action" value="add">
+                                                    <input type="hidden" name="product_id" value="{{ p.id }}">
+                                                    <input
+                                                        type="number"
+                                                        name="quantity"
+                                                        value="1"
+                                                        min="1"
+                                                        class="form-control form-control-sm"
+                                                        style="width: 70px;"
+                                                        required
+                                                    >
+                                                    <input
+                                                        type="number"
+                                                        name="price"
+                                                        value="{{ p.price|floatformat:0 }}"
+                                                        min="0"
+                                                        step="1"
+                                                        class="form-control form-control-sm"
+                                                        style="width: 90px;"
+                                                        required
+                                                    >
+                                                    <button type="submit" class="btn btn-sm btn-primary">
+                                                        <i class="bi bi-plus-lg"></i>
+                                                    </button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                    {% empty %}
+                                        <tr>
+                                            <td colspan="4" class="text-center text-muted py-3">
+                                                Aucun produit trouvé.
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {% if products_page.paginator.num_pages > 1 %}
+                            <nav class="mt-3">
+                                <ul class="pagination pagination-sm justify-content-center mb-0">
+                                    {% if products_page.has_previous %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="?q={{ query }}&page={{ products_page.previous_page_number }}">Précédent</a>
+                                        </li>
+                                    {% else %}
+                                        <li class="page-item disabled"><span class="page-link">Précédent</span></li>
+                                    {% endif %}
+
+                                    <li class="page-item disabled">
+                                        <span class="page-link">
+                                            Page {{ products_page.number }} / {{ products_page.paginator.num_pages }}
+                                        </span>
+                                    </li>
+
+                                    {% if products_page.has_next %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="?q={{ query }}&page={{ products_page.next_page_number }}">Suivant</a>
+                                        </li>
+                                    {% else %}
+                                        <li class="page-item disabled"><span class="page-link">Suivant</span></li>
+                                    {% endif %}
+                                </ul>
+                            </nav>
+                        {% endif %}
+
+                    </div>
+
+                </div>
+
+                <!-- Saisie manuelle -->
+                <div class="card shadow-sm">
+
+                    <div class="card-header bg-body">
+                        <h2 class="h6 mb-0">
+                            <i class="bi bi-pencil-square me-2 text-primary"></i>
+                            Saisie manuelle (article hors catalogue)
+                        </h2>
+                    </div>
+
+                    <div class="card-body">
+
+                        <form method="post">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="add_custom">
+
+                            <div class="row g-3 align-items-end">
+
+                                <div class="col-12 col-md-5">
+                                    <label class="form-label">Désignation</label>
+                                    <input
+                                        type="text"
+                                        name="label"
+                                        class="form-control"
+                                        placeholder="Ex : Fauteuil sur mesure"
+                                        required
+                                    >
+                                </div>
+
+                                <div class="col-6 col-md-3">
+                                    <label class="form-label">Quantité</label>
+                                    <input
+                                        type="number"
+                                        name="quantity"
+                                        value="1"
+                                        min="1"
+                                        class="form-control"
+                                        required
+                                    >
+                                </div>
+
+                                <div class="col-6 col-md-3">
+                                    <label class="form-label">Prix unitaire (F CFA)</label>
+                                    <input
+                                        type="number"
+                                        name="price"
+                                        value="0"
+                                        min="0"
+                                        step="1"
+                                        class="form-control"
+                                        required
+                                    >
+                                </div>
+
+                                <div class="col-12 col-md-1">
+                                    <button type="submit" class="btn btn-primary w-100">
+                                        <i class="bi bi-plus-lg"></i>
+                                    </button>
+                                </div>
+
+                            </div>
+
+                        </form>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- =============================================
+                 COLONNE DROITE : PANIER + CLIENT
+            ============================================== -->
+            <div class="col-12 col-lg-5">
+
+                <div class="card shadow-sm mb-4">
+
+                    <div class="card-header bg-body d-flex align-items-center justify-content-between">
+                        <h2 class="h6 mb-0">
+                            <i class="bi bi-cart-check me-2 text-primary"></i>
+                            Articles de la commande
+                        </h2>
+                        <span class="badge text-bg-secondary">{{ cart_lines|length }}</span>
+                    </div>
+
+                    <div class="card-body p-0">
+
+                        <div class="table-responsive">
+                            <table class="table align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Article</th>
+                                        <th scope="col">Qté</th>
+                                        <th scope="col">Prix</th>
+                                        <th scope="col">Réduction</th>
+                                        <th scope="col">Total</th>
+                                        <th scope="col"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for line in cart_lines %}
+                                        <tr>
+                                            <td>
+                                                {{ line.label }}
+                                                {% if line.kind == "custom" %}
+                                                    <span class="badge text-bg-info ms-1">manuel</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ line.quantity }}</td>
+                                            <td class="text-nowrap">{{ line.price|floatformat:0 }}</td>
+                                            <td style="min-width: 150px;">
+                                                <form method="post" class="d-flex gap-1">
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="action" value="update_line_discount">
+                                                    <input type="hidden" name="line_id" value="{{ line.line_id }}">
+                                                    <input
+                                                        type="number"
+                                                        name="discount_amount"
+                                                        value="{{ line.discount|floatformat:0 }}"
+                                                        min="0"
+                                                        max="{{ line.raw_total|floatformat:0 }}"
+                                                        step="1"
+                                                        class="form-control form-control-sm"
+                                                        style="width: 90px;"
+                                                    >
+                                                    <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                                        <i class="bi bi-check-lg"></i>
+                                                    </button>
+                                                </form>
+                                            </td>
+                                            <td class="text-nowrap fw-semibold">{{ line.total|floatformat:0 }}</td>
+                                            <td>
+                                                <form method="post">
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="action" value="remove">
+                                                    <input type="hidden" name="line_id" value="{{ line.line_id }}">
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                    {% empty %}
+                                        <tr>
+                                            <td colspan="6" class="text-center text-muted py-4">
+                                                <i class="bi bi-cart fs-4 d-block mb-2"></i>
+                                                Aucun article ajouté.
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                    </div>
+
+                    {% if cart_lines %}
+                        <div class="card-footer bg-body">
+
+                            <form method="post" class="row g-2 align-items-end mb-3">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="update_global_discount">
+
+                                <div class="col-12">
+                                    <label class="form-label small mb-1">Réduction sur le total de la commande</label>
+                                </div>
+
+                                <div class="col-6">
+                                    <select name="discount_type" class="form-select form-select-sm">
+                                        {% for value, label in discount_types %}
+                                            <option value="{{ value }}" {% if value == global_discount_type %}selected{% endif %}>
+                                                {{ label }}
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+
+                                <div class="col-4">
+                                    <input
+                                        type="number"
+                                        name="discount_value"
+                                        value="{{ global_discount_value|floatformat:0 }}"
+                                        min="0"
+                                        step="1"
+                                        class="form-control form-control-sm"
+                                        placeholder="Valeur"
+                                    >
+                                </div>
+
+                                <div class="col-2">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary w-100">
+                                        <i class="bi bi-check-lg"></i>
+                                    </button>
+                                </div>
+
+                            </form>
+
+                            <div class="d-flex justify-content-between small text-muted">
+                                <span>Sous-total articles</span>
+                                <span>{{ items_subtotal|floatformat:0 }} F CFA</span>
+                            </div>
+
+                            {% if global_discount_amount > 0 %}
+                                <div class="d-flex justify-content-between small text-danger">
+                                    <span>Réduction globale</span>
+                                    <span>- {{ global_discount_amount|floatformat:0 }} F CFA</span>
+                                </div>
+                            {% endif %}
+
+                            <div class="d-flex justify-content-between mt-1">
+                                <strong>Total commande</strong>
+                                <strong>{{ cart_total|floatformat:0 }} F CFA</strong>
+                            </div>
+
+                        </div>
+                    {% endif %}
+
+                </div>
+
+
+                <div class="card shadow-sm">
+
+                    <div class="card-header bg-body">
+                        <h2 class="h6 mb-0">
+                            <i class="bi bi-person-check me-2 text-primary"></i>
+                            Informations client &amp; validation
+                        </h2>
+                    </div>
+
+                    <div class="card-body">
+
+                        <form method="post">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="validate">
+
+                            <div class="mb-3">
+                                <label class="form-label">Nom du client</label>
+                                <input type="text" name="client_name" class="form-control">
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Téléphone (10 chiffres)</label>
+                                <input type="text" name="client_phone" class="form-control" maxlength="10">
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Date de livraison (facultatif)</label>
+                                <input type="date" name="delivery_date" class="form-control">
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Notes</label>
+                                <textarea name="notes" class="form-control" rows="2"></textarea>
+                            </div>
+
+                            <button
+                                type="submit"
+                                class="btn btn-success w-100"
+                                {% if not cart_lines %}disabled{% endif %}
+                            >
+                                <i class="bi bi-check-circle me-1"></i>
+                                Valider la commande
+                            </button>
+
+                        </form>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    {% endif %}
+
+</div>
+
+{% endblock %}

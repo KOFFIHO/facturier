@@ -6,8 +6,10 @@
   <li class="nav-item"><a href="{% url 'products_list' %}" class="nav-link {% if active == 'products_list' or active == 'product_edit' or active == 'product_import' or active == 'product_restock' %}active{% endif %}"><i class="bi bi-box-seam"></i> Produits</a></li>
   <li class="nav-item"><a href="{% url 'approvisionnements_list' %}" class="nav-link {% if active == 'approvisionnements_list' %}active{% endif %}"><i class="bi bi-truck"></i> Approvisionnements</a></li>
   <li class="nav-item"><a href="{% url 'depenses_list' %}" class="nav-link {% if active == 'depenses_list' %}active{% endif %}"><i class="bi bi-cash-coin"></i> Dépenses</a></li>
+  <li class="nav-item"><a href="{% url 'commandes_list' %}" class="nav-link {% if active == 'commandes_list' or active == 'commande_new' or active == 'commande_detail' %}active{% endif %}"><i class="bi bi-bag-check"></i> Commandes</a></li>
 {% endif %}
 {% if user.role == "ADMIN" %}
+  <li class="nav-item"><a href="{% url 'commande_dashboard' %}" class="nav-link {% if active == 'commande_dashboard' %}active{% endif %}"><i class="bi bi-clipboard-data"></i> Suivi commandes</a></li>
   <li class="nav-item"><a href="{% url 'services_list' %}" class="nav-link {% if active == 'services_list' or active == 'service_edit' %}active{% endif %}"><i class="bi bi-heart-pulse"></i> Prestations</a></li>
   <li class="nav-item"><a href="{% url 'companies_list' %}" class="nav-link {% if active == 'companies_list' or active == 'company_edit' %}active{% endif %}"><i class="bi bi-building"></i> Entreprises</a></li>
   <li class="nav-item"><a href="{% url 'users_list' %}" class="nav-link {% if active == 'users_list' %}active{% endif %}"><i class="bi bi-people"></i> Utilisateurs</a></li>

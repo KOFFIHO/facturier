@@ -58,9 +58,10 @@ from .forms import (
     ValidateSaleForm,
 )
 from .helpers import get_active_company
-from .invoice_pdf import build_invoice_pdf
+from .invoice_pdf import build_invoice_pdf, build_avance_receipt_pdf
 from .models import (
-    Approvisionnement, CashSession, Company, Depense, DiscountType, PaymentMethod, Product, Sale, SaleItem, SalePayment, User,Service, SaleType
+    Approvisionnement, CashSession, Commande, CommandeAvance, CommandeItem, CommandeLivraison,
+    Company, Depense, DiscountType, PaymentMethod, Product, Sale, SaleItem, SalePayment, User, Service, SaleType
 )
 from .product_import import build_import_template, parse_products_file
 
@@ -1513,6 +1514,8 @@ def depenses_list_view(request):
 
     form = DepenseForm(request.POST or None, initial={"date": timezone.now().date()})
     form.fields["employee"].queryset = Employee.objects.filter(company=company, is_active=True)
+    form.fields["commande"].queryset = Commande.objects.filter(company=company).order_by("-created_at")
+    form.fields["commande"].required = False
     if request.method == "POST" and "create_depense" in request.POST and form.is_valid():
         depense = form.save(commit=False)
         depense.company = company
@@ -1651,11 +1654,52 @@ def _apply_sync_payload(payload):
             "default_price": s["default_price"], "is_active": s.get("is_active", True),
         })
 
+    # Traitées AVANT les dépenses : une dépense peut référencer une commande
+    # (Depense.commande_id), la commande doit donc déjà exister.
+    for cmd in payload.get("commandes", []):
+        commande, _ = Commande.objects.update_or_create(id=cmd["id"], defaults={
+            "company_id": cmd["company_id"],
+            "client_name": cmd.get("client_name"),
+            "client_phone": cmd.get("client_phone"),
+            "notes": cmd.get("notes"),
+            "expected_delivery_date": cmd.get("expected_delivery_date"),
+            "discount_type": cmd.get("discount_type", DiscountType.NONE),
+            "discount_value": cmd.get("discount_value", 0),
+            "discount_amount": cmd.get("discount_amount", 0),
+            "seller": None,
+            "seller_name": cmd.get("seller_name", ""),
+        })
+        commande_created_at = parse_datetime(cmd.get("created_at") or "")
+        if commande_created_at:
+            Commande.objects.filter(pk=commande.pk).update(created_at=commande_created_at)
+
+        commande.items.all().delete()
+        for item in cmd.get("items", []):
+            commande_item = CommandeItem.objects.create(
+                commande=commande, product_id=item.get("product_id"),
+                label=item.get("label", ""), quantity_ordered=item["quantity_ordered"],
+                quantity_delivered=item.get("quantity_delivered", 0), unit_price=item["unit_price"],
+                discount_amount=item.get("discount_amount", 0),
+            )
+            for l in item.get("livraisons", []):
+                CommandeLivraison.objects.create(
+                    commande_item=commande_item, quantity=l["quantity"],
+                    date=l["date"], comment=l.get("comment"),
+                )
+
+        commande.avances.all().delete()
+        for a in cmd.get("avances", []):
+            CommandeAvance.objects.create(
+                commande=commande, amount=a["amount"], method=a.get("method", "ESPECES"),
+                date=a["date"], comment=a.get("comment"),
+            )
+
     for d in payload.get("depenses", []):
         Depense.objects.update_or_create(id=d["id"], defaults={
             "company_id": d["company_id"], "date": d["date"], "type_depense": d["type_depense"],
             "label": d["label"], "amount": d["amount"], "comment": d.get("comment"),
             "employee_id": d.get("employee_id"),
+            "commande_id": d.get("commande_id"),
         })
 
     for a in payload.get("approvisionnements", []):
@@ -1751,3 +1795,498 @@ def sync_status_view(request):
     return render(request, "core/sync_status.html", {
         "states": states, "cloud_url": settings.CLOUD_SYNC_URL, "sync_interval": settings.SYNC_INTERVAL_MINUTES,
     })
+
+# ---------------------------------------------------------------------------
+# Commandes client (paiement échelonné + livraison partielle)
+# ---------------------------------------------------------------------------
+
+def _get_commande_cart(request):
+    return request.session.setdefault("commande_cart", {})
+
+
+def _save_commande_cart(request, cart):
+    request.session["commande_cart"] = cart
+    request.session.modified = True
+
+
+def _get_commande_cart_discount(request):
+    return request.session.setdefault(
+        "commande_cart_discount", {"type": DiscountType.NONE, "value": 0}
+    )
+
+
+def _save_commande_cart_discount(request, discount_type, discount_value):
+    request.session["commande_cart_discount"] = {"type": discount_type, "value": discount_value}
+    request.session.modified = True
+
+
+def _compute_discount_amount(discount_type, discount_value, subtotal):
+    if discount_type == DiscountType.PERCENTAGE:
+        return min(subtotal, subtotal * (discount_value / 100))
+    if discount_type == DiscountType.AMOUNT:
+        return min(subtotal, discount_value)
+    return 0.0
+
+
+def _commande_item_allocated_paid(item, commande_total_value, commande_total_paid):
+    """Répartit les avances (versées globalement sur la commande) sur
+    chaque article, proportionnellement à sa valeur. Utilisé uniquement
+    pour l'affichage agrégé (tableau de bord par article)."""
+    if commande_total_value <= 0:
+        return 0.0
+    return item.line_total / commande_total_value * commande_total_paid
+
+
+@manager_required
+def commande_new_view(request):
+    """Saisie d'une nouvelle commande : panier multi-articles en session
+    (produits du catalogue ET/OU articles saisis à la main), aucun
+    paiement requis à cette étape (les avances se saisissent ensuite
+    depuis la page de détail de la commande)."""
+    company = get_active_company(request)
+    if not company:
+        messages.error(request, "Créez d'abord une entreprise.")
+        return redirect("dashboard")
+
+    cart = _get_commande_cart(request)
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+
+        if action == "add":
+            product = _get_or_404_uuid(Product, request.POST.get("product_id"), company=company)
+            try:
+                quantity = _parse_quantity(request.POST.get("quantity"))
+                price = _parse_money(request.POST.get("price"), product.price)
+            except ValueError as exc:
+                messages.error(request, str(exc))
+                return redirect("commande_new")
+
+            cart[uuid.uuid4().hex] = {
+                "kind": "product", "product_id": str(product.id), "label": product.name,
+                "quantity": quantity, "price": price, "discount": 0,
+            }
+            _save_commande_cart(request, cart)
+            messages.success(request, f"{product.name} ajouté à la commande.")
+            return redirect("commande_new")
+
+        if action == "add_custom":
+            label = (request.POST.get("label") or "").strip()
+            if not label:
+                messages.error(request, "La désignation de l'article est requise.")
+                return redirect("commande_new")
+            try:
+                quantity = _parse_quantity(request.POST.get("quantity"))
+                price = _parse_money(request.POST.get("price"), 0)
+            except ValueError as exc:
+                messages.error(request, str(exc))
+                return redirect("commande_new")
+
+            cart[uuid.uuid4().hex] = {
+                "kind": "custom", "product_id": None, "label": label,
+                "quantity": quantity, "price": price, "discount": 0,
+            }
+            _save_commande_cart(request, cart)
+            messages.success(request, f"{label} ajouté à la commande.")
+            return redirect("commande_new")
+
+        if action == "remove":
+            cart.pop(request.POST.get("line_id"), None)
+            _save_commande_cart(request, cart)
+            return redirect("commande_new")
+
+        if action == "update_line_discount":
+            line_id = request.POST.get("line_id")
+            if line_id in cart:
+                raw_total = cart[line_id]["quantity"] * cart[line_id]["price"]
+                try:
+                    discount = _parse_money(request.POST.get("discount_amount"), 0)
+                except ValueError as exc:
+                    messages.error(request, str(exc))
+                    return redirect("commande_new")
+                cart[line_id]["discount"] = max(0, min(discount, raw_total))
+                _save_commande_cart(request, cart)
+                messages.success(request, "Réduction appliquée.")
+            return redirect("commande_new")
+
+        if action == "update_global_discount":
+            discount_type, discount_value = _parse_discount(request)
+            _save_commande_cart_discount(request, discount_type, discount_value)
+            messages.success(request, "Réduction globale appliquée.")
+            return redirect("commande_new")
+
+        if action == "validate":
+            if not cart:
+                messages.error(request, "Ajoutez au moins un article avant de valider.")
+                return redirect("commande_new")
+
+            try:
+                client_name = (request.POST.get("client_name") or "").strip()[:200] or None
+                client_phone = (request.POST.get("client_phone") or "").strip() or None
+                notes = (request.POST.get("notes") or "").strip()[:2000] or None
+                expected_delivery_date = _valid_date_str(request.POST.get("delivery_date")) or None
+                if client_phone and not _PHONE_RE.match(client_phone):
+                    raise ValueError("Le téléphone du client doit contenir exactement 10 chiffres.")
+            except ValueError as exc:
+                messages.error(request, str(exc))
+                return redirect("commande_new")
+
+            items_subtotal = sum(
+                max(0, line["quantity"] * line["price"] - line.get("discount", 0))
+                for line in cart.values()
+            )
+            global_discount = _get_commande_cart_discount(request)
+            global_discount_amount = _compute_discount_amount(
+                global_discount["type"], global_discount["value"], items_subtotal
+            )
+
+            with transaction.atomic():
+                commande = Commande.objects.create(
+                    company=company,
+                    client_name=client_name,
+                    client_phone=client_phone,
+                    notes=notes,
+                    expected_delivery_date=expected_delivery_date,
+                    seller=request.user,
+                    seller_name=request.user.full_name,
+                    discount_type=global_discount["type"],
+                    discount_value=global_discount["value"],
+                    discount_amount=global_discount_amount,
+                )
+                for line in cart.values():
+                    product = None
+                    if line["kind"] == "product" and line.get("product_id"):
+                        product = Product.objects.filter(id=line["product_id"], company=company).first()
+                    CommandeItem.objects.create(
+                        commande=commande,
+                        product=product,
+                        label="" if product else line["label"],
+                        quantity_ordered=line["quantity"],
+                        unit_price=line["price"],
+                        discount_amount=line.get("discount", 0),
+                    )
+
+            _save_commande_cart(request, {})
+            request.session.pop("commande_cart_discount", None)
+            request.session.modified = True
+            messages.success(request, f"Commande {commande.order_code} créée.")
+            return redirect("commande_detail", commande_id=commande.id)
+
+    cart_lines = []
+    items_subtotal = 0
+    for line_id, line in cart.items():
+        raw_total = line["quantity"] * line["price"]
+        discount = line.get("discount", 0)
+        total = max(0, raw_total - discount)
+        items_subtotal += total
+        cart_lines.append({
+            "line_id": line_id, "kind": line["kind"], "label": line["label"],
+            "quantity": line["quantity"], "price": line["price"],
+            "raw_total": raw_total, "discount": discount, "total": total,
+        })
+
+    global_discount = _get_commande_cart_discount(request)
+    global_discount_amount = _compute_discount_amount(
+        global_discount["type"], global_discount["value"], items_subtotal
+    )
+    cart_total = max(0, items_subtotal - global_discount_amount)
+
+    query = (request.GET.get("q") or "").strip()
+    products = Product.objects.filter(company=company)
+    if query:
+        products = products.filter(name__icontains=query)
+    products = products.order_by("name")
+
+    products_paginator = Paginator(products, 5)
+    products_page = products_paginator.get_page(request.GET.get("page"))
+
+    return render(request, "core/commande_new.html", {
+        "company": company,
+        "products_page": products_page,
+        "query": query,
+        "cart_lines": cart_lines,
+        "items_subtotal": items_subtotal,
+        "global_discount_type": global_discount["type"],
+        "global_discount_value": global_discount["value"],
+        "global_discount_amount": global_discount_amount,
+        "cart_total": cart_total,
+        "discount_types": DiscountType.choices,
+    })
+
+
+@manager_required
+def commandes_list_view(request):
+    company = get_active_company(request)
+    commandes_qs = Commande.objects.filter(company=company).prefetch_related("items", "avances") if company else Commande.objects.none()
+
+    query = (request.GET.get("q") or "").strip()
+    if query:
+        commandes_qs = commandes_qs.filter(
+            Q(client_name__icontains=query) | Q(client_phone__icontains=query)
+        )
+
+    status = request.GET.get("status")
+    commandes = list(commandes_qs)
+    if status == "en_cours":
+        commandes = [c for c in commandes if not c.is_fully_delivered]
+    elif status == "livree":
+        commandes = [c for c in commandes if c.is_fully_delivered]
+    elif status == "solde_du":
+        commandes = [c for c in commandes if c.balance_due > 0]
+
+    paginator = Paginator(commandes, 15)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    return render(request, "core/commandes_list.html", {
+        "company": company,
+        "page_obj": page_obj,
+        "commandes": page_obj.object_list,
+        "query": query,
+        "status": status or "",
+    })
+
+
+@manager_required
+def commande_detail_view(request, commande_id):
+    company = get_active_company(request)
+    commande = get_object_or_404(Commande, id=commande_id, company=company)
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+
+        if action == "add_avance":
+            try:
+                amount = _parse_money(request.POST.get("amount"))
+                if amount <= 0:
+                    raise ValueError("Le montant de l'avance doit être supérieur à 0.")
+                method = request.POST.get("method", PaymentMethod.ESPECES)
+                if method not in PaymentMethod.values:
+                    method = PaymentMethod.ESPECES
+                avance_date = _valid_date_str(request.POST.get("date")) or timezone.localdate().isoformat()
+                comment = (request.POST.get("comment") or "").strip()[:255] or None
+            except ValueError as exc:
+                messages.error(request, str(exc))
+                return redirect("commande_detail", commande_id=commande.id)
+
+            CommandeAvance.objects.create(
+                commande=commande, amount=amount, method=method, date=avance_date, comment=comment,
+            )
+            commande.save(update_fields=["updated_at"])  # pour que la synchro détecte le changement
+            messages.success(request, "Avance enregistrée.")
+            return redirect("commande_detail", commande_id=commande.id)
+
+        if action == "add_delivery":
+            item = get_object_or_404(CommandeItem, id=request.POST.get("item_id"), commande=commande)
+            try:
+                quantity = _parse_quantity(request.POST.get("quantity"))
+                if quantity > item.quantity_remaining:
+                    raise ValueError(
+                        f"Impossible de livrer {quantity} : il ne reste que "
+                        f"{item.quantity_remaining} article(s) à livrer sur cette ligne."
+                    )
+                delivery_date = _valid_date_str(request.POST.get("date")) or timezone.localdate().isoformat()
+                comment = (request.POST.get("comment") or "").strip()[:255] or None
+            except ValueError as exc:
+                messages.error(request, str(exc))
+                return redirect("commande_detail", commande_id=commande.id)
+
+            with transaction.atomic():
+                CommandeLivraison.objects.create(
+                    commande_item=item, quantity=quantity, date=delivery_date, comment=comment,
+                )
+                item.quantity_delivered = F("quantity_delivered") + quantity
+                item.save(update_fields=["quantity_delivered"])
+                commande.save(update_fields=["updated_at"])  # pour que la synchro détecte le changement
+            messages.success(request, "Livraison enregistrée.")
+            return redirect("commande_detail", commande_id=commande.id)
+
+        if action == "add_depense":
+            try:
+                dep_date = _valid_date_str(request.POST.get("date")) or timezone.localdate().isoformat()
+                amount = _parse_money(request.POST.get("amount"))
+                if amount <= 0:
+                    raise ValueError("Le montant de la dépense doit être supérieur à 0.")
+                type_depense = (request.POST.get("type_depense") or "").strip()[:100]
+                label = (request.POST.get("label") or "").strip()[:200]
+                comment = (request.POST.get("comment") or "").strip()[:255] or None
+                if not type_depense or not label:
+                    raise ValueError("Le type et le libellé de la dépense sont requis.")
+            except ValueError as exc:
+                messages.error(request, str(exc))
+                return redirect("commande_detail", commande_id=commande.id)
+
+            Depense.objects.create(
+                company=company, commande=commande, date=dep_date,
+                type_depense=type_depense, label=label, amount=amount, comment=comment,
+            )
+            messages.success(request, "Dépense liée à la commande enregistrée.")
+            return redirect("commande_detail", commande_id=commande.id)
+
+    items = commande.items.select_related("product").all()
+    avances = commande.avances.all()
+    livraisons = CommandeLivraison.objects.filter(commande_item__commande=commande).select_related(
+        "commande_item", "commande_item__product"
+    ).order_by("-date", "-created_at")
+
+    return render(request, "core/commande_detail.html", {
+        "company": company,
+        "commande": commande,
+        "items": items,
+        "avances": avances,
+        "livraisons": livraisons,
+        "depenses": commande.depenses.all(),
+        "depenses_total": commande.depenses.aggregate(t=Sum("amount"))["t"] or 0,
+        "payment_methods": PaymentMethod.choices,
+        "today": timezone.localdate().isoformat(),
+    })
+
+
+@admin_required
+def commande_delete_view(request, commande_id):
+    company = get_active_company(request)
+    commande = get_object_or_404(Commande, id=commande_id, company=company)
+    if request.method == "POST":
+        commande.delete()
+        messages.success(request, "Commande supprimée.")
+    return redirect("commandes_list")
+
+
+@admin_required
+def commande_dashboard_view(request):
+    """Tableau de bord agrégé par article, filtrable par mois ou par
+    intervalle de dates. "Dépense globale" ne compte QUE les dépenses
+    explicitement liées à une commande (Depense.commande) — les dépenses
+    générales de l'entreprise et les approvisionnements restent sur le
+    Dashboard principal, pas ici."""
+    company = get_active_company(request)
+
+    month = (request.GET.get("month") or "").strip()
+    start_date = _valid_date_str(request.GET.get("start_date"))
+    end_date = _valid_date_str(request.GET.get("end_date"))
+
+    if month and not (start_date or end_date):
+        try:
+            m_year, m_month = (int(x) for x in month.split("-"))
+            m_start, m_end = _month_bounds(date(m_year, m_month, 1))
+            start_date, end_date = m_start.isoformat(), m_end.isoformat()
+        except (ValueError, TypeError):
+            month = ""
+
+    commandes_qs = (
+        Commande.objects.filter(company=company).prefetch_related("items__product", "avances")
+        if company else Commande.objects.none()
+    )
+    if start_date:
+        commandes_qs = commandes_qs.filter(created_at__date__gte=start_date)
+    if end_date:
+        commandes_qs = commandes_qs.filter(created_at__date__lte=end_date)
+    commandes = list(commandes_qs)
+
+    per_article = {}
+    for commande in commandes:
+        total_value = commande.total_value
+        total_paid = commande.total_paid
+        for item in commande.items.all():
+            key = item.product_id or f"__manuel__:{item.designation}"
+            row = per_article.setdefault(key, {
+                "name": item.designation, "valeur": 0.0, "reduction": 0.0,
+                "avances": 0.0, "commandees": 0, "livrees": 0,
+            })
+            row["valeur"] += item.line_total
+            row["reduction"] += item.discount_amount
+            row["avances"] += _commande_item_allocated_paid(item, total_value, total_paid)
+            row["commandees"] += item.quantity_ordered
+            row["livrees"] += item.quantity_delivered
+
+    article_rows = []
+    for row in per_article.values():
+        article_rows.append({
+            "name": row["name"],
+            "valeur": row["valeur"],
+            "reduction": row["reduction"],
+            "avances": row["avances"],
+            "reste_a_payer": max(0.0, row["valeur"] - row["avances"]),
+            "commandees": row["commandees"],
+            "livrees": row["livrees"],
+            "reste_a_livrer": max(0, row["commandees"] - row["livrees"]),
+        })
+    article_rows.sort(key=lambda r: r["name"])
+
+    article_names = [row["name"] for row in article_rows]
+    article_filter = (request.GET.get("article") or "").strip()
+    if article_filter:
+        article_rows = [row for row in article_rows if row["name"] == article_filter]
+
+    budget = sum(c.total_value for c in commandes)
+    chiffre_affaire = sum(c.total_paid for c in commandes)
+
+    depenses_commandes = (
+        Depense.objects.filter(company=company, commande__isnull=False)
+        if company else Depense.objects.none()
+    )
+    if start_date:
+        depenses_commandes = depenses_commandes.filter(date__gte=start_date)
+    if end_date:
+        depenses_commandes = depenses_commandes.filter(date__lte=end_date)
+    depense_globale = depenses_commandes.aggregate(t=Sum("amount"))["t"] or 0
+
+    solde_en_caisse = chiffre_affaire - depense_globale
+
+    total_ordered = sum(c.total_quantity_ordered for c in commandes)
+    total_delivered = sum(c.total_quantity_delivered for c in commandes)
+    satisfaction_client = round(total_delivered / total_ordered * 100) if total_ordered else 0
+
+    return render(request, "core/commande_dashboard.html", {
+        "company": company,
+        "article_rows": article_rows,
+        "article_names": article_names,
+        "article_filter": article_filter,
+        "budget": budget,
+        "chiffre_affaire": chiffre_affaire,
+        "depense_globale": depense_globale,
+        "depenses_commandes": depenses_commandes.select_related("commande").order_by("-date")[:50],
+        "solde_en_caisse": solde_en_caisse,
+        "satisfaction_client": satisfaction_client,
+        "nb_commandes": len(commandes),
+        "month": month,
+        "start_date": start_date or "",
+        "end_date": end_date or "",
+    })
+
+
+# ---------------------------------------------------------------------------
+# Reçu PDF d'un versement (avance sur une Commande)
+# ---------------------------------------------------------------------------
+
+@manager_required
+def commande_avance_receipt_view(request, commande_id, avance_id):
+    company = get_active_company(request)
+    commande = get_object_or_404(Commande, id=commande_id, company=company)
+    avance = get_object_or_404(CommandeAvance, id=avance_id, commande=commande)
+
+    whatsapp_phone = "".join(ch for ch in (commande.client_phone or "") if ch.isdigit())
+    whatsapp_text = (
+        f"Bonjour {commande.client_name or ''}, voici le reçu de votre versement de "
+        f"{round(avance.amount):,} F CFA du {avance.date.strftime('%d/%m/%Y')} "
+        f"pour la commande {commande.order_code}. Merci de votre confiance !"
+    ).replace(",", " ")
+
+    return render(request, "core/commande_avance_receipt.html", {
+        "company": company,
+        "commande": commande,
+        "avance": avance,
+        "items": commande.items.select_related("product").all(),
+        "avances_history": commande.avances.all(),
+        "whatsapp_phone": whatsapp_phone,
+        "whatsapp_text": whatsapp_text,
+    })
+
+
+@manager_required
+def commande_avance_receipt_pdf_view(request, commande_id, avance_id):
+    company = get_active_company(request)
+    commande = get_object_or_404(Commande, id=commande_id, company=company)
+    avance = get_object_or_404(CommandeAvance, id=avance_id, commande=commande)
+    pdf_buffer = build_avance_receipt_pdf(avance, commande, company)
+    filename = f"recu-{commande.order_code}-{avance.id}.pdf"
+    return FileResponse(pdf_buffer, content_type="application/pdf", filename=filename, as_attachment=True)

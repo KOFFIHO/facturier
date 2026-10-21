@@ -1,0 +1,493 @@
+{% extends "core/base.html" %}
+
+{% block title %}{{ commande.order_code }} - Facturier{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid px-0">
+
+    <!-- =====================================================
+         TITRE
+    ====================================================== -->
+    <div class="d-flex align-items-center justify-content-between mb-4">
+        <div>
+            <h1 class="h4 mb-1">{{ commande.order_code }}</h1>
+            <p class="text-muted mb-0">
+                Client : {{ commande.client_name|default:"—" }}
+                {% if commande.client_phone %} · {{ commande.client_phone }}{% endif %}
+                · Créée le {{ commande.created_at|date:"d/m/Y à H:i" }}
+                {% if commande.seller_name %} par {{ commande.seller_name }}{% endif %}
+                {% if commande.expected_delivery_date %}
+                    · Livraison prévue le {{ commande.expected_delivery_date|date:"d/m/Y" }}
+                {% endif %}
+                {% if commande.actual_delivery_date %}
+                    · <span class="text-success fw-semibold">Livrée le {{ commande.actual_delivery_date|date:"d/m/Y" }}</span>
+                {% endif %}
+            </p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{% url 'commandes_list' %}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-1"></i>
+                Retour
+            </a>
+            <form
+                method="post"
+                action="{% url 'commande_delete' commande.id %}"
+                onsubmit="return confirm('Supprimer définitivement cette commande ?');"
+            >
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-danger">
+                    <i class="bi bi-trash me-1"></i>
+                    Supprimer
+                </button>
+            </form>
+        </div>
+    </div>
+
+
+    <!-- =====================================================
+         CARTES RÉCAPITULATIVES
+    ====================================================== -->
+    <div class="row g-3 mb-4">
+
+        <div class="col-6 col-lg-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <p class="text-muted small mb-1">Valeur totale</p>
+                    <p class="h5 mb-0">{{ commande.total_value|floatformat:0 }} F CFA</p>
+                    {% if commande.discount_amount > 0 %}
+                        <small class="text-muted d-block">
+                            Sous-total {{ commande.items_subtotal|floatformat:0 }} F CFA
+                        </small>
+                        <small class="text-danger d-block">
+                            Réduction - {{ commande.discount_amount|floatformat:0 }} F CFA
+                        </small>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-6 col-lg-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <p class="text-muted small mb-1">Total payé</p>
+                    <p class="h5 mb-0 text-success">{{ commande.total_paid|floatformat:0 }} F CFA</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-6 col-lg-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <p class="text-muted small mb-1">Reste à payer</p>
+                    <p class="h5 mb-0 {% if commande.balance_due > 0 %}text-danger{% endif %}">
+                        {{ commande.balance_due|floatformat:0 }} F CFA
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-6 col-lg-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <p class="text-muted small mb-1">Livraison</p>
+                    <div class="progress mb-1" style="height: 8px;">
+                        <div
+                            class="progress-bar {% if commande.is_fully_delivered %}bg-success{% else %}bg-info{% endif %}"
+                            style="width: {{ commande.delivery_rate }}%;"
+                        ></div>
+                    </div>
+                    <small class="text-muted">
+                        {{ commande.total_quantity_delivered }} / {{ commande.total_quantity_ordered }} articles ({{ commande.delivery_rate }}%)
+                    </small>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    {% if commande.notes %}
+        <div class="alert alert-secondary">
+            <i class="bi bi-sticky me-2"></i>
+            {{ commande.notes }}
+        </div>
+    {% endif %}
+
+
+    <div class="row g-4">
+
+        <!-- =============================================
+             ARTICLES + LIVRAISONS
+        ============================================== -->
+        <div class="col-12 col-lg-7">
+
+            <div class="card shadow-sm mb-4">
+
+                <div class="card-header bg-body">
+                    <h2 class="h6 mb-0">
+                        <i class="bi bi-box-seam me-2 text-primary"></i>
+                        Articles commandés
+                    </h2>
+                </div>
+
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Article</th>
+                                    <th scope="col">Commandé</th>
+                                    <th scope="col">Livré</th>
+                                    <th scope="col">Reste</th>
+                                    <th scope="col">Prix unitaire</th>
+                                    <th scope="col">Réduction</th>
+                                    <th scope="col">Total ligne</th>
+                                    <th scope="col" style="width: 220px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in items %}
+                                    <tr>
+                                        <td>{{ item.designation }}</td>
+                                        <td>{{ item.quantity_ordered }}</td>
+                                        <td>{{ item.quantity_delivered }}</td>
+                                        <td>
+                                            {% if item.quantity_remaining > 0 %}
+                                                <span class="badge text-bg-warning text-dark">{{ item.quantity_remaining }}</span>
+                                            {% else %}
+                                                <span class="badge text-bg-success">0</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-nowrap">{{ item.unit_price|floatformat:0 }} F CFA</td>
+                                        <td class="text-nowrap">
+                                            {% if item.discount_amount > 0 %}
+                                                <span class="text-danger">- {{ item.discount_amount|floatformat:0 }} F CFA</span>
+                                            {% else %}
+                                                —
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-nowrap fw-semibold">{{ item.line_total|floatformat:0 }} F CFA</td>
+                                        <td>
+                                            {% if item.quantity_remaining > 0 %}
+                                                <button
+                                                    class="btn btn-sm btn-outline-primary"
+                                                    type="button"
+                                                    data-bs-toggle="collapse"
+                                                    data-bs-target="#livraison-{{ item.id }}"
+                                                >
+                                                    <i class="bi bi-truck me-1"></i>
+                                                    Livrer
+                                                </button>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% if item.quantity_remaining > 0 %}
+                                        <tr class="collapse" id="livraison-{{ item.id }}">
+                                            <td colspan="8" class="bg-body-tertiary">
+                                                <form method="post" class="row g-2 align-items-end py-2">
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="action" value="add_delivery">
+                                                    <input type="hidden" name="item_id" value="{{ item.id }}">
+
+                                                    <div class="col-6 col-md-2">
+                                                        <label class="form-label small">Quantité</label>
+                                                        <input
+                                                            type="number"
+                                                            name="quantity"
+                                                            min="1"
+                                                            max="{{ item.quantity_remaining }}"
+                                                            value="1"
+                                                            class="form-control form-control-sm"
+                                                            required
+                                                        >
+                                                    </div>
+
+                                                    <div class="col-6 col-md-3">
+                                                        <label class="form-label small">Date</label>
+                                                        <input
+                                                            type="date"
+                                                            name="date"
+                                                            value="{{ today }}"
+                                                            class="form-control form-control-sm"
+                                                        >
+                                                    </div>
+
+                                                    <div class="col-12 col-md-5">
+                                                        <label class="form-label small">Commentaire</label>
+                                                        <input type="text" name="comment" class="form-control form-control-sm">
+                                                    </div>
+
+                                                    <div class="col-12 col-md-2">
+                                                        <button type="submit" class="btn btn-sm btn-primary w-100">
+                                                            <i class="bi bi-check-lg"></i>
+                                                            Valider
+                                                        </button>
+                                                    </div>
+
+                                                </form>
+                                            </td>
+                                        </tr>
+                                    {% endif %}
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+
+            <!-- Historique des livraisons -->
+            <div class="card shadow-sm">
+
+                <div class="card-header bg-body">
+                    <h2 class="h6 mb-0">
+                        <i class="bi bi-clock-history me-2 text-primary"></i>
+                        Historique des livraisons
+                    </h2>
+                </div>
+
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Date</th>
+                                    <th scope="col">Article</th>
+                                    <th scope="col">Quantité</th>
+                                    <th scope="col">Commentaire</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for l in livraisons %}
+                                    <tr>
+                                        <td class="text-nowrap">{{ l.date|date:"d/m/Y" }}</td>
+                                        <td>{{ l.commande_item.designation }}</td>
+                                        <td>{{ l.quantity }}</td>
+                                        <td>{{ l.comment|default:"—" }}</td>
+                                    </tr>
+                                {% empty %}
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted py-3">
+                                            Aucune livraison enregistrée.
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- =============================================
+             VERSEMENTS + DÉPENSES
+        ============================================== -->
+        <div class="col-12 col-lg-5">
+
+            <!-- Nouveau versement -->
+            <div class="card shadow-sm mb-4">
+
+                <div class="card-header bg-body">
+                    <h2 class="h6 mb-0">
+                        <i class="bi bi-cash-coin me-2 text-primary"></i>
+                        Enregistrer un versement
+                    </h2>
+                </div>
+
+                <div class="card-body">
+                    <form method="post" class="row g-3">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="add_avance">
+
+                        <div class="col-6">
+                            <label class="form-label">Montant (F CFA)</label>
+                            <input type="number" name="amount" min="1" step="1" class="form-control" required>
+                        </div>
+
+                        <div class="col-6">
+                            <label class="form-label">Date</label>
+                            <input type="date" name="date" value="{{ today }}" class="form-control">
+                        </div>
+
+                        <div class="col-6">
+                            <label class="form-label">Mode de paiement</label>
+                            <select name="method" class="form-select">
+                                {% for value, label in payment_methods %}
+                                    <option value="{{ value }}">{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="col-6">
+                            <label class="form-label">Commentaire</label>
+                            <input type="text" name="comment" class="form-control">
+                        </div>
+
+                        <div class="col-12">
+                            <button type="submit" class="btn btn-success w-100">
+                                <i class="bi bi-save me-1"></i>
+                                Enregistrer le versement
+                            </button>
+                        </div>
+
+                    </form>
+                </div>
+
+            </div>
+
+
+            <!-- Historique des versements -->
+            <div class="card shadow-sm mb-4">
+
+                <div class="card-header bg-body">
+                    <h2 class="h6 mb-0">
+                        <i class="bi bi-receipt me-2 text-primary"></i>
+                        Historique des versements
+                    </h2>
+                </div>
+
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Date</th>
+                                    <th scope="col">Heure</th>
+                                    <th scope="col">Mode</th>
+                                    <th scope="col">Montant</th>
+                                    <th scope="col"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for a in avances %}
+                                    <tr>
+                                        <td class="text-nowrap">{{ a.date|date:"d/m/Y" }}</td>
+                                        <td class="text-nowrap">{{ a.created_at|date:"H:i" }}</td>
+                                        <td>{{ a.get_method_display }}</td>
+                                        <td class="text-nowrap fw-semibold">{{ a.amount|floatformat:0 }}</td>
+                                        <td>
+                                            <a
+                                                href="{% url 'commande_avance_receipt' commande.id a.id %}"
+                                                class="btn btn-sm btn-outline-primary"
+                                            >
+                                                <i class="bi bi-receipt-cutoff"></i>
+                                            </a>
+                                        </td>
+                                    </tr>
+                                {% empty %}
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted py-3">
+                                            Aucun versement enregistré.
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+
+            <!-- Dépenses liées -->
+            <div class="card shadow-sm">
+
+                <div class="card-header bg-body">
+                    <h2 class="h6 mb-0">
+                        <i class="bi bi-wallet2 me-2 text-primary"></i>
+                        Dépenses liées à cette commande
+                    </h2>
+                </div>
+
+                <div class="card-body">
+
+                    <form method="post" class="row g-2 mb-3">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="add_depense">
+
+                        <div class="col-6">
+                            <label class="form-label small">Date</label>
+                            <input type="date" name="date" value="{{ today }}" class="form-control form-control-sm">
+                        </div>
+
+                        <div class="col-6">
+                            <label class="form-label small">Montant (F CFA)</label>
+                            <input type="number" name="amount" min="1" step="1" class="form-control form-control-sm" required>
+                        </div>
+
+                        <div class="col-6">
+                            <label class="form-label small">Type</label>
+                            <input type="text" name="type_depense" class="form-control form-control-sm" placeholder="Ex : Transport" required>
+                        </div>
+
+                        <div class="col-6">
+                            <label class="form-label small">Libellé</label>
+                            <input type="text" name="label" class="form-control form-control-sm" placeholder="Ex : Bois" required>
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label small">Commentaire</label>
+                            <input type="text" name="comment" class="form-control form-control-sm">
+                        </div>
+
+                        <div class="col-12">
+                            <button type="submit" class="btn btn-sm btn-outline-danger w-100">
+                                <i class="bi bi-plus-lg me-1"></i>
+                                Ajouter la dépense
+                            </button>
+                        </div>
+
+                    </form>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Date</th>
+                                    <th scope="col">Type</th>
+                                    <th scope="col">Libellé</th>
+                                    <th scope="col">Montant</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for d in depenses %}
+                                    <tr>
+                                        <td class="text-nowrap">{{ d.date|date:"d/m/Y" }}</td>
+                                        <td>{{ d.type_depense }}</td>
+                                        <td>{{ d.label }}</td>
+                                        <td class="text-nowrap">{{ d.amount|floatformat:0 }}</td>
+                                    </tr>
+                                {% empty %}
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted py-3">
+                                            Aucune dépense liée.
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                            {% if depenses %}
+                                <tfoot>
+                                    <tr>
+                                        <td colspan="3" class="text-end fw-semibold">Total</td>
+                                        <td class="fw-semibold">{{ depenses_total|floatformat:0 }}</td>
+                                    </tr>
+                                </tfoot>
+                            {% endif %}
+                        </table>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}

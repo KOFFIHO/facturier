@@ -280,10 +280,11 @@ class EmployeeForm(BootstrapFormMixin, forms.Form):
 class DepenseForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Depense
-        fields = ["date", "type_depense", "label", "amount", "employee", "comment"]
+        fields = ["date", "type_depense", "label", "amount", "employee", "commande", "comment"]
         labels = {
             "date": "Date", "type_depense": "Type de dépense", "label": "Libellé",
-            "amount": "Montant (F CFA)", "employee": "Demandée par", "comment": "Commentaire",
+            "amount": "Montant (F CFA)", "employee": "Demandée par",
+            "commande": "Commande liée (optionnel)", "comment": "Commentaire",
         }
         widgets = {
             "date": forms.DateInput(attrs={"type": "date"}),
