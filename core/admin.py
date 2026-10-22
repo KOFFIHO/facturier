@@ -1,8 +1,10 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
-from django.db.models import manager
 
-from .models import CashSession, Company, Product, Sale, SaleItem, SalePayment, User
+from .models import (
+    Approvisionnement, CashSession, Commande, CommandeAvance, CommandeItem, CommandeLivraison,
+    Company, Depense, Employee, Product, Sale, SaleItem, SalePayment, Service, SyncState, User,
+)
 
 
 @admin.register(User)
@@ -54,3 +56,61 @@ class SaleAdmin(admin.ModelAdmin):
 class CashSessionAdmin(admin.ModelAdmin):
     list_display = ("seller", "company", "opened_at", "planned_closed_at", "is_closed")
     list_filter = ("company", "is_closed")
+
+
+@admin.register(Service)
+class ServiceAdmin(admin.ModelAdmin):
+    list_display = ("name", "company", "default_price", "is_active")
+    list_filter = ("company", "is_active")
+    search_fields = ("name",)
+
+
+@admin.register(Employee)
+class EmployeeAdmin(admin.ModelAdmin):
+    list_display = ("full_name", "role", "company", "phone", "is_active")
+    list_filter = ("company", "role", "is_active")
+    search_fields = ("full_name", "phone")
+
+
+@admin.register(Depense)
+class DepenseAdmin(admin.ModelAdmin):
+    list_display = ("date", "type_depense", "label", "amount", "commande", "company")
+    list_filter = ("company", "type_depense")
+    search_fields = ("label", "type_depense")
+    date_hierarchy = "date"
+
+
+@admin.register(Approvisionnement)
+class ApprovisionnementAdmin(admin.ModelAdmin):
+    list_display = ("date", "product", "quantity", "unit_cost", "company")
+    list_filter = ("company",)
+    date_hierarchy = "date"
+
+
+class CommandeItemInline(admin.TabularInline):
+    model = CommandeItem
+    extra = 0
+
+
+class CommandeAvanceInline(admin.TabularInline):
+    model = CommandeAvance
+    extra = 0
+
+
+@admin.register(Commande)
+class CommandeAdmin(admin.ModelAdmin):
+    list_display = ("order_code", "client_name", "client_phone", "company", "expected_delivery_date", "created_at")
+    list_filter = ("company",)
+    search_fields = ("client_name", "client_phone")
+    inlines = [CommandeItemInline, CommandeAvanceInline]
+
+
+@admin.register(CommandeLivraison)
+class CommandeLivraisonAdmin(admin.ModelAdmin):
+    list_display = ("commande_item", "quantity", "date")
+    date_hierarchy = "date"
+
+
+@admin.register(SyncState)
+class SyncStateAdmin(admin.ModelAdmin):
+    list_display = ("key", "last_synced_at")
